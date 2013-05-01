@@ -7,7 +7,7 @@ $( document ).ready(function() {
   var drawspeed = 3;
   var speed = 2;
   var rad = 10, maxrad = 100;
-  var xs = [], ys = [], dxs = [], dys = [], colors = [], alpha = [], rads = [], active = [], inc = [], dead = [];
+  var xs = [], ys = [], dxs = [], dys = [], colors = [], alpha = [], rads = [], active = [], inc = [], dead = [], colorInc = [];
   var numballs = 10;
   var target = 1;
   var numactive = 0;
@@ -20,6 +20,7 @@ $( document ).ready(function() {
   var alphatext = 1.0;
   var alphasmiley = 0.0;
   var good = true;
+  var maxColorChange = 15;
   // Setup
   function addball(xpos, ypos, actstate){
     xs.push(xpos);
@@ -29,7 +30,11 @@ $( document ).ready(function() {
     var r = Math.floor(Math.random() * (254)),
         g = Math.floor(Math.random() * (254)),
         b = Math.floor(Math.random() * (254));
-    colors.push(r+","+g+","+b+",");
+    colors.push([r, g, b]);
+    var ri = Math.floor(Math.random() * maxColorChange*2 - maxColorChange),
+        gi = Math.floor(Math.random() * maxColorChange*2 - maxColorChange),
+        bi = Math.floor(Math.random() * maxColorChange*2 - maxColorChange);
+    colorInc.push([ri, gi, bi]);
     alpha.push(1.0);
     rads.push(rad);
     inc.push(true);
@@ -109,7 +114,7 @@ $( document ).ready(function() {
     }
     for(var i=0; i<numballs; i++){
       context.beginPath();
-      context.fillStyle="rgba("+colors[i]+alpha[i]+")";
+      context.fillStyle="rgba("+colors[i][0]+","+colors[i][1]+","+colors[i][2]+","+alpha[i]+")";
       context.arc(xs[i],ys[i],rads[i],0,Math.PI*2,true);
       context.closePath();
       context.fill();
@@ -140,6 +145,9 @@ $( document ).ready(function() {
           dead[i] = true;
         }
       }
+      incrementColor(i, 0);
+      incrementColor(i, 1);
+      incrementColor(i, 2);
     }
     // Check if game ended
     if(clicks > 0){
@@ -202,6 +210,21 @@ $( document ).ready(function() {
     context.font = "bold "+size+"px sans-serif";
     context.textBaseline = 'bottom';
     context.fillText(input_text, posy, posx);
+  }
+
+  function incrementColor(colorNumber, channel) {
+    newColor = colors[colorNumber][channel] + colorInc[colorNumber][channel];
+
+    if(newColor > 255) {
+      newColor = 255;
+      colorInc[colorNumber][channel] = -colorInc[colorNumber][channel];
+    }
+    if(newColor < 0) {
+      newColor = 0;
+      colorInc[colorNumber][channel] = -colorInc[colorNumber][channel];
+    }
+
+    colors[colorNumber][channel] = newColor;
   }
 });
 </script>
