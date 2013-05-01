@@ -40,7 +40,7 @@ $( document ).ready(function() {
     level += 1;
     clicks = 0;
     textdelay = 200;
-    numballs = Math.min(80,5*Math.floor(level/5) + 10);
+    numballs = Math.min(80,5*Math.floor((level-1)/5) + 10);
     alphatext = 1.0;
     alphasmiley = 1.0;
     if(numballs < 30){
