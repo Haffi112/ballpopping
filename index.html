@@ -25,8 +25,8 @@ $( document ).ready(function() {
   function addball(xpos, ypos, actstate){
     xs.push(xpos);
     ys.push(ypos);
-    dxs.push(Math.random()*speed);
-    dys.push(Math.random()*speed);
+    dxs.push(Math.random()*speed*2 - speed);
+    dys.push(Math.random()*speed*2 - speed);
     var r = Math.floor(Math.random() * (254)),
         g = Math.floor(Math.random() * (254)),
         b = Math.floor(Math.random() * (254));
