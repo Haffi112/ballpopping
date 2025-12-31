@@ -1,257 +1,1529 @@
-<script src="http://ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
-<script type="text/javascript">
-$( document ).ready(function() {
-  canvas.addEventListener("click", onClick, false);
-
-  var context;
-  var drawspeed = 3;
-  var speed = 2;
-  var rad = 10, maxrad = 100;
-  var xs = [], ys = [], dxs = [], dys = [], colors = [], alpha = [], rads = [], active = [], inc = [], dead = [], colorInc = [];
-  var numballs = 10;
-  var target = 1;
-  var numactive = 0;
-  var width = 600;
-  var height = 500;
-  var mousex, mousey, clicks = 0, mouserad = 20;
-  var level = 0;
-  var levelstart = true;
-  var textdelay = 200;
-  var alphatext = 1.0;
-  var alphasmiley = 0.0;
-  var good = true;
-  var maxColorChange = 15;
-  // Setup
-  function addball(xpos, ypos, actstate){
-    xs.push(xpos);
-    ys.push(ypos);
-    dxs.push(Math.random()*speed*2 - speed);
-    dys.push(Math.random()*speed*2 - speed);
-    var r = Math.floor(Math.random() * (254)),
-        g = Math.floor(Math.random() * (254)),
-        b = Math.floor(Math.random() * (254));
-    colors.push([r, g, b]);
-    var ri = Math.floor(Math.random() * maxColorChange*2 - maxColorChange),
-        gi = Math.floor(Math.random() * maxColorChange*2 - maxColorChange),
-        bi = Math.floor(Math.random() * maxColorChange*2 - maxColorChange);
-    colorInc.push([ri, gi, bi]);
-    alpha.push(1.0);
-    rads.push(rad);
-    inc.push(true);
-    active.push(actstate);
-    dead.push(false);
-  }
-
-  function nextlevel(){
-    level += 1;
-    clicks = 0;
-    textdelay = 200;
-    numballs = Math.min(80,5*Math.floor((level-1)/5) + 10);
-    alphatext = 1.0;
-    alphasmiley = 1.0;
-    if(numballs < 30){
-      target = Math.floor(Math.min(0.8,((((level-1)%5)+1)/5.0))*numballs);
-    }
-    else{
-      target = Math.max(numballs/2,Math.floor((((level%10)+1)/10.0)*numballs));
-    }
-
-    xs = [], ys = [], dxs = [], dys = [], colors = [], alpha = [], rads = [], active = [], inc = [], dead = [];
-    numactive = 0;
-    for(var i = 0; i<numballs; i++){
-      var xrand = Math.floor((Math.random()*(width-2*rad))+rad),
-          yrand = Math.floor((Math.random()*(height-2*rad))+rad);
-      addball(xrand, yrand, false);
-    }
-  }
-
-  function draw(){
-    context= canvas.getContext('2d');
-    context.clearRect(0,0,600,500);
-    if(textdelay > 100){
-      textdelay-=drawspeed;
-      showText("Level "+level+" - Pop at least "+target+" out of "+numballs+" balls",20,0,height,alphatext);
-    }
-    else if(textdelay > 0 && alphatext > 0.0){
-      alphatext -= 0.01*drawspeed;
-      textdelay-= drawspeed;
-      showText("Level "+level+" - Pop at least "+target+" out of "+numballs+" balls",20,0,height,alphatext);
-    }
-    else{
-      showText(numactive+" / "+target,20,0,height,1.0);
-    }
-    if(alphasmiley>0.0){
-      if(good && level <= 10){
-        showText(":)",100,width/2-50,height/2,alphasmiley);
-      }
-      else if(good && level <= 20){
-        showText(":D",100,width/2-50,height/2,alphasmiley);
-      }
-      else if(good && level > 20){
-        showText(":'D",100,width/2-50,height/2,alphasmiley);
-      }
-      else{
-        showText(":'(",100,width/2-50,height/2,alphasmiley);
-      }
-      alphasmiley-=0.01*drawspeed;
-    }
-
-    if(levelstart){
-      levelstart = false;
-      nextlevel();
-    }
-    // Update active balls
-    for(var i=0; i<numballs; i++){
-      if(clicks > 0 && !active[i] && !dead[i]){
-        for(var j=0; j<numballs; j++){
-          if(active[j] && rads[j] > 0 && Math.sqrt((xs[i]-xs[j])*(xs[i]-xs[j]) + (ys[i]-ys[j])*(ys[i]-ys[j])) < rads[i]+rads[j]){
-            active[i] = true;
-            numactive += 1;
-            break;
-          }
-        }
-      }
-    }
-    for(var i=0; i<numballs; i++){
-      context.beginPath();
-      context.fillStyle="rgba("+colors[i][0]+","+colors[i][1]+","+colors[i][2]+","+alpha[i]+")";
-      context.arc(xs[i],ys[i],rads[i],0,Math.PI*2,true);
-      context.closePath();
-      context.fill();
-      if(!active[i]){
-        if( xs[i]<rad || xs[i]>600-rad)
-          dxs[i]=-dxs[i];
-        if( ys[i]<rad || ys[i]>500-rad)
-          dys[i]=-dys[i];
-        xs[i]+=dxs[i]*drawspeed;
-        ys[i]+=dys[i]*drawspeed;
-      }
-      else{
-        if(inc[i]){
-          rads[i] += drawspeed;
-          if(rads[i] > maxrad){
-            inc[i] = false
-          }
-        }
-        else if(rads[i] > 0){
-          rads[i] -= drawspeed;
-          rads[i] = Math.max(rads[i],0);
-          if(alpha[i] > 0.0)
-            alpha[i] -= 0.01*drawspeed;
-          alpha[i] = Math.max(alpha[i],0.0);
-        }
-        else if(rads[i] < 1){
-          active[i] = false;
-          dead[i] = true;
-        }
-      }
-      incrementColor(i, 0);
-      incrementColor(i, 1);
-      incrementColor(i, 2);
-    }
-    // Check if game ended
-    if(clicks > 0){
-      var anyactive = false;
-      for(var k=0; k<numballs; k++){
-        if(active[k]){
-          anyactive = true;
-          break;
-        }
-      }
-      if(!anyactive && numactive < target){
-        level = 0;
-        good = false;
-        levelstart = true;
-      }
-      else if(!anyactive && numactive >= target){
-        levelstart = true;
-        good = true;
-      }
-    }
-  }
-  setInterval(draw,drawspeed*10);
-
-  // Utilities
-  function findPos(obj) {
-    var curleft = 0, curtop = 0;
-    if (obj.offsetParent) {
-        do {
-            curleft += obj.offsetLeft;
-            curtop += obj.offsetTop;
-        } while (obj = obj.offsetParent);
-        return { x: curleft, y: curtop };
-    }
-    return undefined;
-  }
-
-  function onClick(e) {
-    if(clicks < 1){
-      clicks += 1
-
-      var element = canvas;
-      var offsetX = 0, offsetY = 0
-      if (element.offsetParent) {
-        do {
-          offsetX += element.offsetLeft;
-          offsetY += element.offsetTop;
-        } while ((element = element.offsetParent));
-      }
-
-      mousex = e.pageX - offsetX;
-      mousey = e.pageY - offsetY;
-
-      addball(mousex,mousey,true);
-      numballs += 1
-    }
-  }
-
-  function showText(input_text,size, posy, posx,a) {
-    context.fillStyle = "rgba(41,37,28,"+a+")";
-    context.font = "bold "+size+"px sans-serif";
-    context.textBaseline = 'bottom';
-    context.fillText(input_text, posy, posx);
-  }
-
-  function incrementColor(colorNumber, channel) {
-    newColor = colors[colorNumber][channel] + colorInc[colorNumber][channel];
-
-    if(newColor > 255) {
-      newColor = 255;
-      colorInc[colorNumber][channel] = -colorInc[colorNumber][channel];
-    }
-    if(newColor < 0) {
-      newColor = 0;
-      colorInc[colorNumber][channel] = -colorInc[colorNumber][channel];
-    }
-
-    colors[colorNumber][channel] = newColor;
-  }
-});
-</script>
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title>Pop'em all!</title>
-<style type="text/css">
-<!--
-body { background-color:#ededed; font:normal 12px/18px Arial, Helvetica, sans-serif; }
-h1 { display:block; width:600px; margin:20px auto; padding-bottom:10px; font:bold 40px/52px Helvetica, sans-serif; color:#333;}
-#container { width:600px; margin:0 auto; }
-#canvas { background:#fff; border:1px solid #cbcbcb; }
-#nav { display:block; width:100%; text-align:center; }
-#nav li { display:block; font-weight:bold; line-height:21px; text-shadow:1px 1px 1px #fff; width:100px; height:21px; padding:5px; margin:0 10px; background:#e0e0e0; border:1px solid #ccc; -moz-border-radius:4px;-webkit-border-radius:4px; border-radius:4px; float:left; }
-#nav li a { color:#000; display:block; text-decoration:none; width:100%; height:100%; }
--->
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="screen-orientation" content="landscape">
+  <title>Pop'em All!</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: background-color 0.5s ease;
+    }
+
+    #gameCanvas {
+      display: block;
+      touch-action: none;
+    }
+
+    #rotateMessage {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      color: white;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 1000;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #rotateMessage .icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+      animation: rotate 2s ease-in-out infinite;
+    }
+
+    #rotateMessage h2 {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+
+    #rotateMessage p {
+      font-size: 16px;
+      opacity: 0.7;
+    }
+
+    @keyframes rotate {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(90deg); }
+    }
+
+    @media (orientation: portrait) and (max-width: 768px) {
+      #rotateMessage {
+        display: flex;
+      }
+      #gameCanvas {
+        display: none;
+      }
+    }
+  </style>
 </head>
 <body>
-  <center><h1>Pop'em all!</h1></center>
-<div id="container">
+  <div id="rotateMessage">
+    <div class="icon">📱</div>
+    <h2>Please Rotate Your Device</h2>
+    <p>This game is best played in landscape mode</p>
+  </div>
+  <canvas id="gameCanvas"></canvas>
 
-	<canvas id="canvas" width="600" height="500"></canvas>
+  <script>
+    // ============================================
+    // POP'EM ALL! - A Modern Ball Popping Game
+    // ============================================
 
-</div>
+    (function() {
+      'use strict';
 
+      // ============================================
+      // CONFIGURATION & CONSTANTS
+      // ============================================
+      const CONFIG = {
+        BASE_BALL_COUNT: 10,
+        BALLS_PER_TIER: 5,
+        MAX_BALLS: 100,
+        BASE_SPEED: 2,
+        BASE_RADIUS: 12,
+        MAX_RADIUS: 80,
+        PARTICLE_COUNT: 12,
+        RIPPLE_DURATION: 500,
+        COMBO_WINDOW: 800,
+        HIGH_SCORE_KEY: 'popemall_highscore',
+        SETTINGS_KEY: 'popemall_settings',
+        TARGET_FPS: 60,
+      };
+
+      // ============================================
+      // COLOR THEMES
+      // ============================================
+      const THEMES = {
+        neon: {
+          name: 'Neon Nights',
+          background: '#0a0a1a',
+          canvasBackground: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+          ballColors: ['#ff006e', '#8338ec', '#3a86ff', '#06ffa5', '#ffbe0b', '#fb5607'],
+          textColor: '#ffffff',
+          uiBackground: 'rgba(20, 20, 40, 0.9)',
+          uiBorder: '#8338ec',
+          buttonGradient: ['#8338ec', '#ff006e'],
+          particleGlow: true
+        },
+        sunset: {
+          name: 'Sunset Vibes',
+          background: '#1a0a1a',
+          canvasBackground: 'linear-gradient(135deg, #2d1f3d 0%, #4a2040 50%, #6b2d5b 100%)',
+          ballColors: ['#ff6b6b', '#ffd93d', '#ff8e3c', '#d63384', '#e85d04', '#ffb703'],
+          textColor: '#ffffff',
+          uiBackground: 'rgba(45, 31, 61, 0.9)',
+          uiBorder: '#ff6b6b',
+          buttonGradient: ['#ff6b6b', '#ffd93d'],
+          particleGlow: true
+        },
+        ocean: {
+          name: 'Deep Ocean',
+          background: '#001220',
+          canvasBackground: 'linear-gradient(135deg, #001830 0%, #003060 50%, #004080 100%)',
+          ballColors: ['#00b4d8', '#0077b6', '#48cae4', '#90e0ef', '#00f5d4', '#7209b7'],
+          textColor: '#ffffff',
+          uiBackground: 'rgba(0, 48, 96, 0.9)',
+          uiBorder: '#00b4d8',
+          buttonGradient: ['#0077b6', '#00b4d8'],
+          particleGlow: true
+        },
+        forest: {
+          name: 'Enchanted Forest',
+          background: '#0a1a0a',
+          canvasBackground: 'linear-gradient(135deg, #1a2f1a 0%, #2d4a2d 50%, #3d6b3d 100%)',
+          ballColors: ['#80ed99', '#57cc99', '#38a3a5', '#22577a', '#c7f9cc', '#b5e48c'],
+          textColor: '#ffffff',
+          uiBackground: 'rgba(45, 74, 45, 0.9)',
+          uiBorder: '#80ed99',
+          buttonGradient: ['#57cc99', '#80ed99'],
+          particleGlow: true
+        },
+        candy: {
+          name: 'Candy Pop',
+          background: '#fff0f5',
+          canvasBackground: 'linear-gradient(135deg, #ffeef8 0%, #ffe0f0 50%, #ffd0e8 100%)',
+          ballColors: ['#ff69b4', '#dda0dd', '#98fb98', '#87ceeb', '#ffd700', '#ff6347'],
+          textColor: '#333333',
+          uiBackground: 'rgba(255, 224, 240, 0.95)',
+          uiBorder: '#ff69b4',
+          buttonGradient: ['#ff69b4', '#dda0dd'],
+          particleGlow: false
+        },
+        midnight: {
+          name: 'Midnight Galaxy',
+          background: '#000011',
+          canvasBackground: 'linear-gradient(135deg, #000022 0%, #110033 50%, #220044 100%)',
+          ballColors: ['#9d4edd', '#c77dff', '#e0aaff', '#7b2cbf', '#5a189a', '#ff6d00'],
+          textColor: '#e0aaff',
+          uiBackground: 'rgba(17, 0, 51, 0.95)',
+          uiBorder: '#9d4edd',
+          buttonGradient: ['#7b2cbf', '#c77dff'],
+          particleGlow: true
+        }
+      };
+
+      // ============================================
+      // GAME STATE
+      // ============================================
+      const state = {
+        canvas: null,
+        ctx: null,
+        width: 0,
+        height: 0,
+        dpr: 1,
+
+        // Game state
+        gameState: 'menu', // menu, playing, paused, levelComplete, gameOver, settings, levelSelect
+        level: 1,
+        score: 0,
+        highScore: 0,
+        combo: 0,
+        maxCombo: 0,
+        lastPopTime: 0,
+        clicks: 0,
+
+        // Level state
+        balls: [],
+        particles: [],
+        ripples: [],
+        numballs: 0,
+        target: 0,
+        numPopped: 0,
+
+        // Animation
+        lastTime: 0,
+        deltaTime: 0,
+
+        // Settings
+        settings: {
+          theme: 'neon',
+          soundEnabled: true,
+          vibrationEnabled: true,
+          particlesEnabled: true
+        },
+
+        // Audio
+        audioContext: null,
+
+        // Touch
+        touchStartTime: 0
+      };
+
+      // ============================================
+      // BALL CLASS
+      // ============================================
+      class Ball {
+        constructor(x, y, isActive = false, options = {}) {
+          this.x = x;
+          this.y = y;
+          this.vx = (Math.random() * 2 - 1) * CONFIG.BASE_SPEED;
+          this.vy = (Math.random() * 2 - 1) * CONFIG.BASE_SPEED;
+          this.radius = options.radius || CONFIG.BASE_RADIUS;
+          this.maxRadius = options.maxRadius || CONFIG.MAX_RADIUS;
+          this.color = options.color || this.getRandomColor();
+          this.alpha = 1;
+          this.isActive = isActive;
+          this.isDead = false;
+          this.isExpanding = true;
+          this.colorPhase = Math.random() * Math.PI * 2;
+          this.colorSpeed = 0.02 + Math.random() * 0.02;
+          this.glowIntensity = 0;
+
+          // Special ball types for higher levels
+          this.type = options.type || 'normal';
+          this.speedMultiplier = options.speedMultiplier || 1;
+          this.shrinkSpeed = options.shrinkSpeed || 1;
+        }
+
+        getRandomColor() {
+          const theme = THEMES[state.settings.theme];
+          return theme.ballColors[Math.floor(Math.random() * theme.ballColors.length)];
+        }
+
+        update(dt, width, height) {
+          if (this.isDead) return;
+
+          const speed = dt * 60 / 1000;
+
+          if (!this.isActive) {
+            // Bounce off walls
+            if (this.x - this.radius < 0 || this.x + this.radius > width) {
+              this.vx *= -1;
+              this.x = Math.max(this.radius, Math.min(width - this.radius, this.x));
+            }
+            if (this.y - this.radius < 0 || this.y + this.radius > height) {
+              this.vy *= -1;
+              this.y = Math.max(this.radius, Math.min(height - this.radius, this.y));
+            }
+
+            this.x += this.vx * speed * this.speedMultiplier;
+            this.y += this.vy * speed * this.speedMultiplier;
+
+            // Color animation
+            this.colorPhase += this.colorSpeed * speed;
+          } else {
+            // Active ball expansion/contraction
+            if (this.isExpanding) {
+              this.radius += 2 * speed;
+              this.glowIntensity = Math.min(1, this.glowIntensity + 0.1 * speed);
+              if (this.radius >= this.maxRadius) {
+                this.isExpanding = false;
+              }
+            } else {
+              this.radius -= 1.5 * speed * this.shrinkSpeed;
+              this.alpha -= 0.015 * speed * this.shrinkSpeed;
+              this.glowIntensity -= 0.05 * speed;
+
+              if (this.radius <= 0 || this.alpha <= 0) {
+                this.isDead = true;
+                this.radius = 0;
+                this.alpha = 0;
+              }
+            }
+          }
+        }
+
+        draw(ctx) {
+          if (this.isDead || this.radius <= 0) return;
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, this.alpha);
+
+          // Glow effect for active balls
+          if (this.isActive && theme.particleGlow && this.glowIntensity > 0) {
+            ctx.shadowColor = this.color;
+            ctx.shadowBlur = 20 * this.glowIntensity;
+          }
+
+          // Gradient fill
+          const gradient = ctx.createRadialGradient(
+            this.x - this.radius * 0.3,
+            this.y - this.radius * 0.3,
+            0,
+            this.x,
+            this.y,
+            this.radius
+          );
+
+          const baseColor = this.color;
+          gradient.addColorStop(0, this.lightenColor(baseColor, 40));
+          gradient.addColorStop(0.5, baseColor);
+          gradient.addColorStop(1, this.darkenColor(baseColor, 30));
+
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fillStyle = gradient;
+          ctx.fill();
+
+          // Shine effect
+          if (this.radius > 5) {
+            ctx.beginPath();
+            ctx.arc(
+              this.x - this.radius * 0.25,
+              this.y - this.radius * 0.25,
+              this.radius * 0.2,
+              0,
+              Math.PI * 2
+            );
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.4 * this.alpha})`;
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+
+        lightenColor(color, percent) {
+          const num = parseInt(color.replace('#', ''), 16);
+          const amt = Math.round(2.55 * percent);
+          const R = Math.min(255, (num >> 16) + amt);
+          const G = Math.min(255, ((num >> 8) & 0x00FF) + amt);
+          const B = Math.min(255, (num & 0x0000FF) + amt);
+          return `rgb(${R}, ${G}, ${B})`;
+        }
+
+        darkenColor(color, percent) {
+          const num = parseInt(color.replace('#', ''), 16);
+          const amt = Math.round(2.55 * percent);
+          const R = Math.max(0, (num >> 16) - amt);
+          const G = Math.max(0, ((num >> 8) & 0x00FF) - amt);
+          const B = Math.max(0, (num & 0x0000FF) - amt);
+          return `rgb(${R}, ${G}, ${B})`;
+        }
+
+        collidesWith(other) {
+          const dx = this.x - other.x;
+          const dy = this.y - other.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          return distance < this.radius + other.radius;
+        }
+      }
+
+      // ============================================
+      // PARTICLE CLASS
+      // ============================================
+      class Particle {
+        constructor(x, y, color) {
+          this.x = x;
+          this.y = y;
+          this.color = color;
+          this.radius = Math.random() * 4 + 2;
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 8 + 4;
+          this.vx = Math.cos(angle) * speed;
+          this.vy = Math.sin(angle) * speed;
+          this.alpha = 1;
+          this.decay = 0.02 + Math.random() * 0.02;
+          this.gravity = 0.15;
+        }
+
+        update(dt) {
+          const speed = dt * 60 / 1000;
+          this.x += this.vx * speed;
+          this.y += this.vy * speed;
+          this.vy += this.gravity * speed;
+          this.alpha -= this.decay * speed;
+          this.radius *= 0.98;
+          return this.alpha > 0 && this.radius > 0.5;
+        }
+
+        draw(ctx) {
+          const theme = THEMES[state.settings.theme];
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, this.alpha);
+
+          if (theme.particleGlow) {
+            ctx.shadowColor = this.color;
+            ctx.shadowBlur = 10;
+          }
+
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fillStyle = this.color;
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // ============================================
+      // RIPPLE CLASS
+      // ============================================
+      class Ripple {
+        constructor(x, y) {
+          this.x = x;
+          this.y = y;
+          this.radius = 0;
+          this.maxRadius = 60;
+          this.alpha = 0.5;
+          this.speed = 3;
+        }
+
+        update(dt) {
+          const speed = dt * 60 / 1000;
+          this.radius += this.speed * speed;
+          this.alpha -= 0.02 * speed;
+          return this.alpha > 0 && this.radius < this.maxRadius;
+        }
+
+        draw(ctx) {
+          const theme = THEMES[state.settings.theme];
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, this.alpha);
+          ctx.strokeStyle = theme.ballColors[0];
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // ============================================
+      // AUDIO SYSTEM
+      // ============================================
+      const Audio = {
+        init() {
+          try {
+            state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          } catch (e) {
+            console.log('Web Audio not supported');
+          }
+        },
+
+        resume() {
+          if (state.audioContext && state.audioContext.state === 'suspended') {
+            state.audioContext.resume();
+          }
+        },
+
+        playPop(pitch = 1) {
+          if (!state.settings.soundEnabled || !state.audioContext) return;
+
+          try {
+            const osc = state.audioContext.createOscillator();
+            const gain = state.audioContext.createGain();
+
+            osc.connect(gain);
+            gain.connect(state.audioContext.destination);
+
+            osc.frequency.setValueAtTime(400 * pitch, state.audioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(200 * pitch, state.audioContext.currentTime + 0.1);
+
+            gain.gain.setValueAtTime(0.3, state.audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, state.audioContext.currentTime + 0.15);
+
+            osc.start(state.audioContext.currentTime);
+            osc.stop(state.audioContext.currentTime + 0.15);
+          } catch (e) {
+            // Ignore audio errors
+          }
+        },
+
+        playCombo(comboLevel) {
+          if (!state.settings.soundEnabled || !state.audioContext) return;
+
+          try {
+            const baseFreq = 300 + comboLevel * 50;
+            const osc = state.audioContext.createOscillator();
+            const gain = state.audioContext.createGain();
+
+            osc.type = 'sine';
+            osc.connect(gain);
+            gain.connect(state.audioContext.destination);
+
+            osc.frequency.setValueAtTime(baseFreq, state.audioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, state.audioContext.currentTime + 0.1);
+
+            gain.gain.setValueAtTime(0.2, state.audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, state.audioContext.currentTime + 0.2);
+
+            osc.start(state.audioContext.currentTime);
+            osc.stop(state.audioContext.currentTime + 0.2);
+          } catch (e) {
+            // Ignore audio errors
+          }
+        },
+
+        playLevelUp() {
+          if (!state.settings.soundEnabled || !state.audioContext) return;
+
+          try {
+            const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
+            notes.forEach((freq, i) => {
+              setTimeout(() => {
+                const osc = state.audioContext.createOscillator();
+                const gain = state.audioContext.createGain();
+
+                osc.type = 'sine';
+                osc.connect(gain);
+                gain.connect(state.audioContext.destination);
+
+                osc.frequency.setValueAtTime(freq, state.audioContext.currentTime);
+                gain.gain.setValueAtTime(0.2, state.audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, state.audioContext.currentTime + 0.3);
+
+                osc.start(state.audioContext.currentTime);
+                osc.stop(state.audioContext.currentTime + 0.3);
+              }, i * 100);
+            });
+          } catch (e) {
+            // Ignore audio errors
+          }
+        },
+
+        playGameOver() {
+          if (!state.settings.soundEnabled || !state.audioContext) return;
+
+          try {
+            const notes = [400, 350, 300, 250];
+            notes.forEach((freq, i) => {
+              setTimeout(() => {
+                const osc = state.audioContext.createOscillator();
+                const gain = state.audioContext.createGain();
+
+                osc.type = 'sine';
+                osc.connect(gain);
+                gain.connect(state.audioContext.destination);
+
+                osc.frequency.setValueAtTime(freq, state.audioContext.currentTime);
+                gain.gain.setValueAtTime(0.2, state.audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, state.audioContext.currentTime + 0.4);
+
+                osc.start(state.audioContext.currentTime);
+                osc.stop(state.audioContext.currentTime + 0.4);
+              }, i * 150);
+            });
+          } catch (e) {
+            // Ignore audio errors
+          }
+        }
+      };
+
+      // ============================================
+      // HAPTIC FEEDBACK
+      // ============================================
+      const Haptic = {
+        vibrate(pattern) {
+          if (!state.settings.vibrationEnabled) return;
+          if (navigator.vibrate) {
+            navigator.vibrate(pattern);
+          }
+        },
+
+        pop() {
+          this.vibrate(20);
+        },
+
+        combo() {
+          this.vibrate([20, 30, 20]);
+        },
+
+        levelUp() {
+          this.vibrate([50, 50, 50, 50, 100]);
+        },
+
+        gameOver() {
+          this.vibrate([100, 50, 100]);
+        }
+      };
+
+      // ============================================
+      // STORAGE
+      // ============================================
+      const Storage = {
+        saveHighScore(score) {
+          try {
+            localStorage.setItem(CONFIG.HIGH_SCORE_KEY, score.toString());
+          } catch (e) {
+            // Storage not available
+          }
+        },
+
+        loadHighScore() {
+          try {
+            return parseInt(localStorage.getItem(CONFIG.HIGH_SCORE_KEY)) || 0;
+          } catch (e) {
+            return 0;
+          }
+        },
+
+        saveSettings(settings) {
+          try {
+            localStorage.setItem(CONFIG.SETTINGS_KEY, JSON.stringify(settings));
+          } catch (e) {
+            // Storage not available
+          }
+        },
+
+        loadSettings() {
+          try {
+            const saved = localStorage.getItem(CONFIG.SETTINGS_KEY);
+            return saved ? JSON.parse(saved) : null;
+          } catch (e) {
+            return null;
+          }
+        }
+      };
+
+      // ============================================
+      // LEVEL SYSTEM
+      // ============================================
+      const LevelSystem = {
+        calculateBallCount(level) {
+          const tierBonus = Math.floor((level - 1) / 5) * CONFIG.BALLS_PER_TIER;
+          return Math.min(CONFIG.MAX_BALLS, CONFIG.BASE_BALL_COUNT + tierBonus);
+        },
+
+        calculateTarget(level, ballCount) {
+          if (ballCount < 30) {
+            return Math.max(1, Math.floor(Math.min(0.8, (((level - 1) % 5) + 1) / 5.0) * ballCount));
+          }
+          return Math.max(ballCount / 2, Math.floor((((level % 10) + 1) / 10.0) * ballCount));
+        },
+
+        getBallOptions(level) {
+          const options = { type: 'normal', speedMultiplier: 1, shrinkSpeed: 1 };
+
+          // Speed increases every 5 levels
+          options.speedMultiplier = 1 + Math.floor(level / 5) * 0.15;
+
+          // Smaller max radius at higher levels
+          if (level > 10) {
+            options.maxRadius = CONFIG.MAX_RADIUS - Math.min(30, (level - 10) * 2);
+          }
+
+          // Faster shrink at higher levels
+          if (level > 15) {
+            options.shrinkSpeed = 1 + (level - 15) * 0.05;
+          }
+
+          return options;
+        },
+
+        getSpecialBallChance(level) {
+          if (level < 8) return 0;
+          return Math.min(0.3, (level - 8) * 0.03);
+        }
+      };
+
+      // ============================================
+      // UI RENDERING
+      // ============================================
+      const UI = {
+        drawBackground(ctx) {
+          const theme = THEMES[state.settings.theme];
+
+          // Create gradient background
+          const gradient = ctx.createLinearGradient(0, 0, state.width, state.height);
+          const bgColors = theme.canvasBackground.match(/#[a-f0-9]{6}/gi);
+          if (bgColors) {
+            gradient.addColorStop(0, bgColors[0]);
+            gradient.addColorStop(0.5, bgColors[1] || bgColors[0]);
+            gradient.addColorStop(1, bgColors[2] || bgColors[0]);
+          }
+
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, state.width, state.height);
+
+          // Add subtle grid pattern for depth
+          ctx.strokeStyle = `rgba(255, 255, 255, 0.03)`;
+          ctx.lineWidth = 1;
+          const gridSize = 40;
+          for (let x = 0; x < state.width; x += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, state.height);
+            ctx.stroke();
+          }
+          for (let y = 0; y < state.height; y += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(state.width, y);
+            ctx.stroke();
+          }
+        },
+
+        drawHUD(ctx) {
+          const theme = THEMES[state.settings.theme];
+          const padding = 20;
+          const fontSize = Math.min(24, state.height * 0.04);
+
+          ctx.save();
+          ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
+          ctx.textBaseline = 'top';
+
+          // Level & Target (top left)
+          ctx.fillStyle = theme.textColor;
+          ctx.textAlign = 'left';
+          ctx.fillText(`Level ${state.level}`, padding, padding);
+          ctx.font = `${fontSize * 0.7}px 'Segoe UI', sans-serif`;
+          ctx.fillText(`Pop ${state.target} balls`, padding, padding + fontSize + 5);
+
+          // Score (top center)
+          ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText(`Score: ${state.score}`, state.width / 2, padding);
+
+          // High score
+          ctx.font = `${fontSize * 0.6}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.6)`;
+          ctx.fillText(`Best: ${state.highScore}`, state.width / 2, padding + fontSize + 5);
+
+          // Progress (top right)
+          ctx.textAlign = 'right';
+          ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText(`${state.numPopped} / ${state.target}`, state.width - padding, padding);
+
+          // Combo display
+          if (state.combo > 1) {
+            const comboSize = fontSize * 1.5;
+            ctx.font = `bold ${comboSize}px 'Segoe UI', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillStyle = theme.ballColors[state.combo % theme.ballColors.length];
+
+            if (THEMES[state.settings.theme].particleGlow) {
+              ctx.shadowColor = theme.ballColors[state.combo % theme.ballColors.length];
+              ctx.shadowBlur = 20;
+            }
+
+            ctx.fillText(`${state.combo}x COMBO!`, state.width / 2, state.height / 2 - comboSize);
+          }
+
+          ctx.restore();
+        },
+
+        drawMenu(ctx) {
+          const theme = THEMES[state.settings.theme];
+
+          this.drawBackground(ctx);
+
+          ctx.save();
+
+          // Title
+          const titleSize = Math.min(60, state.height * 0.12);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Title glow
+          if (theme.particleGlow) {
+            ctx.shadowColor = theme.ballColors[0];
+            ctx.shadowBlur = 30;
+          }
+
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText("Pop'em All!", state.width / 2, state.height * 0.2);
+
+          ctx.shadowBlur = 0;
+
+          // High score
+          const subtitleSize = titleSize * 0.4;
+          ctx.font = `${subtitleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.7)`;
+          ctx.fillText(`High Score: ${state.highScore}`, state.width / 2, state.height * 0.28);
+
+          // Buttons
+          this.drawButton(ctx, state.width / 2, state.height * 0.45, 'Play', 'play');
+          this.drawButton(ctx, state.width / 2, state.height * 0.58, 'Level Select', 'levelSelect');
+          this.drawButton(ctx, state.width / 2, state.height * 0.71, 'Settings', 'settings');
+
+          // Theme indicator
+          ctx.font = `${subtitleSize * 0.8}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.5)`;
+          ctx.fillText(`Theme: ${theme.name}`, state.width / 2, state.height * 0.9);
+
+          ctx.restore();
+        },
+
+        drawButton(ctx, x, y, text, id) {
+          const theme = THEMES[state.settings.theme];
+          const btnWidth = Math.min(250, state.width * 0.4);
+          const btnHeight = Math.min(50, state.height * 0.08);
+          const btnX = x - btnWidth / 2;
+          const btnY = y - btnHeight / 2;
+
+          // Store button bounds for click detection
+          if (!state.buttons) state.buttons = {};
+          state.buttons[id] = { x: btnX, y: btnY, width: btnWidth, height: btnHeight };
+
+          // Button background
+          const gradient = ctx.createLinearGradient(btnX, btnY, btnX + btnWidth, btnY + btnHeight);
+          gradient.addColorStop(0, theme.buttonGradient[0]);
+          gradient.addColorStop(1, theme.buttonGradient[1]);
+
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.roundRect(btnX, btnY, btnWidth, btnHeight, 10);
+          ctx.fill();
+
+          // Button border
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Button text
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `bold ${btnHeight * 0.4}px 'Segoe UI', sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, x, y);
+        },
+
+        drawPauseMenu(ctx) {
+          // Dim background
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+          ctx.fillRect(0, 0, state.width, state.height);
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Paused title
+          const titleSize = Math.min(50, state.height * 0.1);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText('PAUSED', state.width / 2, state.height * 0.25);
+
+          // Current stats
+          const statsSize = titleSize * 0.4;
+          ctx.font = `${statsSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = `rgba(255, 255, 255, 0.7)`;
+          ctx.fillText(`Level: ${state.level}  |  Score: ${state.score}`, state.width / 2, state.height * 0.35);
+
+          // Buttons
+          this.drawButton(ctx, state.width / 2, state.height * 0.5, 'Resume', 'resume');
+          this.drawButton(ctx, state.width / 2, state.height * 0.63, 'Restart', 'restart');
+          this.drawButton(ctx, state.width / 2, state.height * 0.76, 'Main Menu', 'mainMenu');
+
+          ctx.restore();
+        },
+
+        drawLevelComplete(ctx) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+          ctx.fillRect(0, 0, state.width, state.height);
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Success message
+          const titleSize = Math.min(50, state.height * 0.1);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+
+          if (theme.particleGlow) {
+            ctx.shadowColor = theme.ballColors[0];
+            ctx.shadowBlur = 20;
+          }
+
+          ctx.fillStyle = theme.ballColors[0];
+          ctx.fillText('LEVEL COMPLETE!', state.width / 2, state.height * 0.25);
+
+          ctx.shadowBlur = 0;
+
+          // Stats
+          const statsSize = titleSize * 0.5;
+          ctx.font = `${statsSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText(`Popped: ${state.numPopped} / ${state.numballs}`, state.width / 2, state.height * 0.38);
+          ctx.fillText(`Score: +${state.levelScore || 0}`, state.width / 2, state.height * 0.46);
+          if (state.maxCombo > 1) {
+            ctx.fillText(`Max Combo: ${state.maxCombo}x`, state.width / 2, state.height * 0.54);
+          }
+
+          // Button
+          this.drawButton(ctx, state.width / 2, state.height * 0.72, 'Next Level', 'nextLevel');
+
+          ctx.restore();
+        },
+
+        drawGameOver(ctx) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+          ctx.fillRect(0, 0, state.width, state.height);
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Game over message
+          const titleSize = Math.min(50, state.height * 0.1);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = '#ff6b6b';
+          ctx.fillText('GAME OVER', state.width / 2, state.height * 0.2);
+
+          // Stats
+          const statsSize = titleSize * 0.5;
+          ctx.font = `${statsSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText(`Reached Level: ${state.level}`, state.width / 2, state.height * 0.33);
+          ctx.fillText(`Final Score: ${state.score}`, state.width / 2, state.height * 0.41);
+
+          if (state.score >= state.highScore && state.score > 0) {
+            ctx.fillStyle = theme.ballColors[0];
+            ctx.fillText('NEW HIGH SCORE!', state.width / 2, state.height * 0.49);
+          }
+
+          // Buttons
+          this.drawButton(ctx, state.width / 2, state.height * 0.65, 'Try Again', 'restart');
+          this.drawButton(ctx, state.width / 2, state.height * 0.78, 'Main Menu', 'mainMenu');
+
+          ctx.restore();
+        },
+
+        drawSettings(ctx) {
+          this.drawBackground(ctx);
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Title
+          const titleSize = Math.min(40, state.height * 0.08);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText('Settings', state.width / 2, state.height * 0.12);
+
+          // Settings options
+          const optionSize = titleSize * 0.5;
+          const startY = state.height * 0.25;
+          const spacing = state.height * 0.12;
+
+          // Sound toggle
+          this.drawToggle(ctx, state.width / 2, startY, 'Sound', state.settings.soundEnabled, 'sound');
+
+          // Vibration toggle
+          this.drawToggle(ctx, state.width / 2, startY + spacing, 'Vibration', state.settings.vibrationEnabled, 'vibration');
+
+          // Particles toggle
+          this.drawToggle(ctx, state.width / 2, startY + spacing * 2, 'Particles', state.settings.particlesEnabled, 'particles');
+
+          // Theme selector
+          ctx.font = `${optionSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText('Theme:', state.width / 2, startY + spacing * 3);
+
+          // Theme buttons
+          const themeKeys = Object.keys(THEMES);
+          const themeWidth = Math.min(100, state.width / (themeKeys.length + 1));
+          const themeStartX = (state.width - themeWidth * themeKeys.length) / 2 + themeWidth / 2;
+
+          themeKeys.forEach((key, i) => {
+            const x = themeStartX + i * themeWidth;
+            const y = startY + spacing * 3.6;
+            const isActive = state.settings.theme === key;
+
+            if (!state.buttons) state.buttons = {};
+            state.buttons[`theme_${key}`] = {
+              x: x - themeWidth / 2 + 5,
+              y: y - 20,
+              width: themeWidth - 10,
+              height: 40
+            };
+
+            ctx.fillStyle = isActive ? THEMES[key].buttonGradient[0] : THEMES[key].uiBackground;
+            ctx.beginPath();
+            ctx.roundRect(x - themeWidth / 2 + 5, y - 20, themeWidth - 10, 40, 8);
+            ctx.fill();
+
+            if (isActive) {
+              ctx.strokeStyle = '#fff';
+              ctx.lineWidth = 2;
+              ctx.stroke();
+            }
+
+            ctx.fillStyle = THEMES[key].textColor;
+            ctx.font = `${optionSize * 0.6}px 'Segoe UI', sans-serif`;
+            ctx.fillText(THEMES[key].name.split(' ')[0], x, y);
+          });
+
+          // Back button
+          this.drawButton(ctx, state.width / 2, state.height * 0.88, 'Back', 'back');
+
+          ctx.restore();
+        },
+
+        drawToggle(ctx, x, y, label, isOn, id) {
+          const theme = THEMES[state.settings.theme];
+          const toggleWidth = 60;
+          const toggleHeight = 30;
+          const labelSize = Math.min(20, state.height * 0.04);
+
+          if (!state.buttons) state.buttons = {};
+          state.buttons[id] = {
+            x: x + 20,
+            y: y - toggleHeight / 2,
+            width: toggleWidth,
+            height: toggleHeight
+          };
+
+          // Label
+          ctx.font = `${labelSize}px 'Segoe UI', sans-serif`;
+          ctx.textAlign = 'right';
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText(label, x - 10, y);
+
+          // Toggle background
+          ctx.fillStyle = isOn ? theme.buttonGradient[0] : 'rgba(128, 128, 128, 0.5)';
+          ctx.beginPath();
+          ctx.roundRect(x + 20, y - toggleHeight / 2, toggleWidth, toggleHeight, toggleHeight / 2);
+          ctx.fill();
+
+          // Toggle knob
+          const knobX = isOn ? x + 20 + toggleWidth - toggleHeight / 2 - 3 : x + 20 + toggleHeight / 2 + 3;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(knobX, y, toggleHeight / 2 - 4, 0, Math.PI * 2);
+          ctx.fill();
+        },
+
+        drawLevelSelect(ctx) {
+          this.drawBackground(ctx);
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Title
+          const titleSize = Math.min(40, state.height * 0.08);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText('Select Level', state.width / 2, state.height * 0.1);
+
+          // Level grid
+          const cols = 5;
+          const rows = 4;
+          const buttonSize = Math.min(60, state.width / (cols + 2), state.height / (rows + 3));
+          const gridWidth = cols * (buttonSize + 15) - 15;
+          const gridHeight = rows * (buttonSize + 15) - 15;
+          const startX = (state.width - gridWidth) / 2;
+          const startY = state.height * 0.22;
+
+          for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+              const level = row * cols + col + 1;
+              const x = startX + col * (buttonSize + 15);
+              const y = startY + row * (buttonSize + 15);
+
+              if (!state.buttons) state.buttons = {};
+              state.buttons[`level_${level}`] = { x, y, width: buttonSize, height: buttonSize };
+
+              // Button background
+              const gradient = ctx.createLinearGradient(x, y, x + buttonSize, y + buttonSize);
+              gradient.addColorStop(0, theme.buttonGradient[0]);
+              gradient.addColorStop(1, theme.buttonGradient[1]);
+
+              ctx.fillStyle = gradient;
+              ctx.beginPath();
+              ctx.roundRect(x, y, buttonSize, buttonSize, 8);
+              ctx.fill();
+
+              // Level number
+              ctx.fillStyle = '#ffffff';
+              ctx.font = `bold ${buttonSize * 0.4}px 'Segoe UI', sans-serif`;
+              ctx.fillText(level.toString(), x + buttonSize / 2, y + buttonSize / 2);
+            }
+          }
+
+          // Back button
+          this.drawButton(ctx, state.width / 2, state.height * 0.88, 'Back', 'back');
+
+          ctx.restore();
+        }
+      };
+
+      // ============================================
+      // GAME LOGIC
+      // ============================================
+      const Game = {
+        init() {
+          state.canvas = document.getElementById('gameCanvas');
+          state.ctx = state.canvas.getContext('2d');
+
+          // Load saved data
+          state.highScore = Storage.loadHighScore();
+          const savedSettings = Storage.loadSettings();
+          if (savedSettings) {
+            state.settings = { ...state.settings, ...savedSettings };
+          }
+
+          // Initialize audio
+          Audio.init();
+
+          // Setup canvas
+          this.resize();
+          window.addEventListener('resize', () => this.resize());
+
+          // Setup input handlers
+          state.canvas.addEventListener('click', (e) => this.handleClick(e));
+          state.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+          state.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: false });
+
+          // Keyboard controls
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+              if (state.gameState === 'playing') {
+                state.gameState = 'paused';
+              } else if (state.gameState === 'paused') {
+                state.gameState = 'playing';
+              }
+            }
+          });
+
+          // Start game loop
+          this.loop(0);
+        },
+
+        resize() {
+          state.dpr = window.devicePixelRatio || 1;
+          state.width = window.innerWidth;
+          state.height = window.innerHeight;
+
+          state.canvas.width = state.width * state.dpr;
+          state.canvas.height = state.height * state.dpr;
+          state.canvas.style.width = state.width + 'px';
+          state.canvas.style.height = state.height + 'px';
+
+          state.ctx.scale(state.dpr, state.dpr);
+
+          // Update body background
+          document.body.style.backgroundColor = THEMES[state.settings.theme].background;
+        },
+
+        handleClick(e) {
+          const rect = state.canvas.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          this.processInput(x, y);
+        },
+
+        handleTouchStart(e) {
+          e.preventDefault();
+          state.touchStartTime = Date.now();
+          Audio.resume();
+        },
+
+        handleTouchEnd(e) {
+          e.preventDefault();
+
+          // Ensure it's a tap, not a swipe
+          if (Date.now() - state.touchStartTime > 500) return;
+
+          const touch = e.changedTouches[0];
+          const rect = state.canvas.getBoundingClientRect();
+          const x = touch.clientX - rect.left;
+          const y = touch.clientY - rect.top;
+          this.processInput(x, y);
+        },
+
+        processInput(x, y) {
+          state.buttons = state.buttons || {};
+
+          // Check button clicks based on game state
+          if (state.gameState === 'menu') {
+            if (this.isButtonClick('play', x, y)) {
+              this.startGame(1);
+            } else if (this.isButtonClick('levelSelect', x, y)) {
+              state.gameState = 'levelSelect';
+            } else if (this.isButtonClick('settings', x, y)) {
+              state.gameState = 'settings';
+            }
+          } else if (state.gameState === 'playing') {
+            this.handleGameClick(x, y);
+          } else if (state.gameState === 'paused') {
+            if (this.isButtonClick('resume', x, y)) {
+              state.gameState = 'playing';
+            } else if (this.isButtonClick('restart', x, y)) {
+              this.startGame(1);
+            } else if (this.isButtonClick('mainMenu', x, y)) {
+              state.gameState = 'menu';
+            }
+          } else if (state.gameState === 'levelComplete') {
+            if (this.isButtonClick('nextLevel', x, y)) {
+              this.startGame(state.level + 1);
+            }
+          } else if (state.gameState === 'gameOver') {
+            if (this.isButtonClick('restart', x, y)) {
+              this.startGame(1);
+            } else if (this.isButtonClick('mainMenu', x, y)) {
+              state.gameState = 'menu';
+            }
+          } else if (state.gameState === 'settings') {
+            this.handleSettingsClick(x, y);
+          } else if (state.gameState === 'levelSelect') {
+            this.handleLevelSelectClick(x, y);
+          }
+        },
+
+        isButtonClick(id, x, y) {
+          const btn = state.buttons[id];
+          if (!btn) return false;
+          return x >= btn.x && x <= btn.x + btn.width &&
+                 y >= btn.y && y <= btn.y + btn.height;
+        },
+
+        handleGameClick(x, y) {
+          if (state.clicks >= 1) return;
+
+          state.clicks++;
+          Audio.resume();
+
+          // Create player ball
+          const theme = THEMES[state.settings.theme];
+          const playerBall = new Ball(x, y, true, {
+            color: theme.ballColors[0],
+            radius: CONFIG.BASE_RADIUS
+          });
+          state.balls.push(playerBall);
+
+          // Add ripple effect
+          state.ripples.push(new Ripple(x, y));
+
+          // Haptic feedback
+          Haptic.pop();
+          Audio.playPop(1.2);
+        },
+
+        handleSettingsClick(x, y) {
+          if (this.isButtonClick('back', x, y)) {
+            Storage.saveSettings(state.settings);
+            state.gameState = 'menu';
+            return;
+          }
+
+          if (this.isButtonClick('sound', x, y)) {
+            state.settings.soundEnabled = !state.settings.soundEnabled;
+            if (state.settings.soundEnabled) Audio.playPop();
+          } else if (this.isButtonClick('vibration', x, y)) {
+            state.settings.vibrationEnabled = !state.settings.vibrationEnabled;
+            if (state.settings.vibrationEnabled) Haptic.pop();
+          } else if (this.isButtonClick('particles', x, y)) {
+            state.settings.particlesEnabled = !state.settings.particlesEnabled;
+          }
+
+          // Check theme buttons
+          Object.keys(THEMES).forEach(key => {
+            if (this.isButtonClick(`theme_${key}`, x, y)) {
+              state.settings.theme = key;
+              document.body.style.backgroundColor = THEMES[key].background;
+            }
+          });
+        },
+
+        handleLevelSelectClick(x, y) {
+          if (this.isButtonClick('back', x, y)) {
+            state.gameState = 'menu';
+            return;
+          }
+
+          // Check level buttons
+          for (let i = 1; i <= 20; i++) {
+            if (this.isButtonClick(`level_${i}`, x, y)) {
+              this.startGame(i);
+              return;
+            }
+          }
+        },
+
+        startGame(level) {
+          state.level = level;
+          state.clicks = 0;
+          state.numPopped = 0;
+          state.combo = 0;
+          state.maxCombo = 0;
+          state.lastPopTime = 0;
+          state.balls = [];
+          state.particles = [];
+          state.ripples = [];
+          state.levelScore = 0;
+
+          if (level === 1) {
+            state.score = 0;
+          }
+
+          state.numballs = LevelSystem.calculateBallCount(level);
+          state.target = LevelSystem.calculateTarget(level, state.numballs);
+
+          const options = LevelSystem.getBallOptions(level);
+          const theme = THEMES[state.settings.theme];
+
+          // Create balls
+          for (let i = 0; i < state.numballs; i++) {
+            const x = CONFIG.BASE_RADIUS + Math.random() * (state.width - 2 * CONFIG.BASE_RADIUS);
+            const y = CONFIG.BASE_RADIUS + Math.random() * (state.height - 2 * CONFIG.BASE_RADIUS);
+            const color = theme.ballColors[Math.floor(Math.random() * theme.ballColors.length)];
+
+            const ball = new Ball(x, y, false, {
+              ...options,
+              color
+            });
+            state.balls.push(ball);
+          }
+
+          state.gameState = 'playing';
+        },
+
+        update(dt) {
+          if (state.gameState !== 'playing') return;
+
+          // Update balls
+          state.balls.forEach(ball => ball.update(dt, state.width, state.height));
+
+          // Check collisions and activate balls
+          if (state.clicks > 0) {
+            state.balls.forEach(ball => {
+              if (!ball.isActive && !ball.isDead) {
+                state.balls.forEach(other => {
+                  if (other.isActive && other.radius > 0 && ball.collidesWith(other)) {
+                    ball.isActive = true;
+                    state.numPopped++;
+
+                    // Combo system
+                    const now = Date.now();
+                    if (now - state.lastPopTime < CONFIG.COMBO_WINDOW) {
+                      state.combo++;
+                      if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+                      Audio.playCombo(state.combo);
+                      if (state.combo > 2) Haptic.combo();
+                    } else {
+                      state.combo = 1;
+                    }
+                    state.lastPopTime = now;
+
+                    // Score calculation
+                    const points = 10 * state.combo;
+                    state.score += points;
+                    state.levelScore = (state.levelScore || 0) + points;
+
+                    // Particles
+                    if (state.settings.particlesEnabled) {
+                      for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+                        state.particles.push(new Particle(ball.x, ball.y, ball.color));
+                      }
+                    }
+
+                    Audio.playPop(0.8 + Math.random() * 0.4);
+                    Haptic.pop();
+                  }
+                });
+              }
+            });
+          }
+
+          // Update particles
+          state.particles = state.particles.filter(p => p.update(dt));
+
+          // Update ripples
+          state.ripples = state.ripples.filter(r => r.update(dt));
+
+          // Check level end conditions
+          if (state.clicks > 0) {
+            const anyActive = state.balls.some(ball => ball.isActive);
+
+            if (!anyActive) {
+              if (state.numPopped >= state.target) {
+                // Level complete
+                state.gameState = 'levelComplete';
+                Audio.playLevelUp();
+                Haptic.levelUp();
+
+                // Update high score
+                if (state.score > state.highScore) {
+                  state.highScore = state.score;
+                  Storage.saveHighScore(state.highScore);
+                }
+              } else {
+                // Game over
+                state.gameState = 'gameOver';
+                Audio.playGameOver();
+                Haptic.gameOver();
+
+                // Update high score
+                if (state.score > state.highScore) {
+                  state.highScore = state.score;
+                  Storage.saveHighScore(state.highScore);
+                }
+              }
+            }
+          }
+        },
+
+        render() {
+          const ctx = state.ctx;
+
+          ctx.clearRect(0, 0, state.width, state.height);
+
+          switch (state.gameState) {
+            case 'menu':
+              UI.drawMenu(ctx);
+              break;
+            case 'playing':
+              UI.drawBackground(ctx);
+              state.ripples.forEach(r => r.draw(ctx));
+              state.balls.forEach(ball => ball.draw(ctx));
+              state.particles.forEach(p => p.draw(ctx));
+              UI.drawHUD(ctx);
+              break;
+            case 'paused':
+              UI.drawBackground(ctx);
+              state.balls.forEach(ball => ball.draw(ctx));
+              UI.drawHUD(ctx);
+              UI.drawPauseMenu(ctx);
+              break;
+            case 'levelComplete':
+              UI.drawBackground(ctx);
+              state.particles.forEach(p => p.draw(ctx));
+              UI.drawLevelComplete(ctx);
+              break;
+            case 'gameOver':
+              UI.drawBackground(ctx);
+              UI.drawGameOver(ctx);
+              break;
+            case 'settings':
+              UI.drawSettings(ctx);
+              break;
+            case 'levelSelect':
+              UI.drawLevelSelect(ctx);
+              break;
+          }
+        },
+
+        loop(timestamp) {
+          state.deltaTime = timestamp - state.lastTime;
+          state.lastTime = timestamp;
+
+          // Cap delta time to prevent huge jumps
+          const dt = Math.min(state.deltaTime, 50);
+
+          this.update(dt);
+          this.render();
+
+          requestAnimationFrame((t) => this.loop(t));
+        }
+      };
+
+      // ============================================
+      // POLYFILLS
+      // ============================================
+      if (!CanvasRenderingContext2D.prototype.roundRect) {
+        CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+          if (w < 2 * r) r = w / 2;
+          if (h < 2 * r) r = h / 2;
+          this.moveTo(x + r, y);
+          this.arcTo(x + w, y, x + w, y + h, r);
+          this.arcTo(x + w, y + h, x, y + h, r);
+          this.arcTo(x, y + h, x, y, r);
+          this.arcTo(x, y, x + w, y, r);
+          this.closePath();
+          return this;
+        };
+      }
+
+      // ============================================
+      // START GAME
+      // ============================================
+      document.addEventListener('DOMContentLoaded', () => {
+        Game.init();
+      });
+
+    })();
+  </script>
 </body>
 </html>
