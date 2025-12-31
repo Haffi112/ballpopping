@@ -114,7 +114,18 @@
         COMBO_WINDOW: 800,
         HIGH_SCORE_KEY: 'popemall_highscore',
         SETTINGS_KEY: 'popemall_settings',
+        STATS_KEY: 'popemall_stats',
+        UNLOCKS_KEY: 'popemall_unlocks',
         TARGET_FPS: 60,
+        // Special ball types
+        SPECIAL_BALL_TYPES: ['golden', 'bomb', 'frozen', 'speed'],
+        // Star rating thresholds
+        STAR_THRESHOLDS: { one: 0, two: 0.75, three: 0.90 },
+        // Time attack duration (seconds)
+        TIME_ATTACK_DURATION: 60,
+        // Screen shake settings
+        SCREEN_SHAKE_INTENSITY: 8,
+        SCREEN_SHAKE_DURATION: 300,
       };
 
       // ============================================
@@ -130,7 +141,8 @@
           uiBackground: 'rgba(20, 20, 40, 0.9)',
           uiBorder: '#8338ec',
           buttonGradient: ['#8338ec', '#ff006e'],
-          particleGlow: true
+          particleGlow: true,
+          unlockLevel: 0 // Always available
         },
         sunset: {
           name: 'Sunset Vibes',
@@ -141,7 +153,8 @@
           uiBackground: 'rgba(45, 31, 61, 0.9)',
           uiBorder: '#ff6b6b',
           buttonGradient: ['#ff6b6b', '#ffd93d'],
-          particleGlow: true
+          particleGlow: true,
+          unlockLevel: 0 // Always available
         },
         ocean: {
           name: 'Deep Ocean',
@@ -152,7 +165,8 @@
           uiBackground: 'rgba(0, 48, 96, 0.9)',
           uiBorder: '#00b4d8',
           buttonGradient: ['#0077b6', '#00b4d8'],
-          particleGlow: true
+          particleGlow: true,
+          unlockLevel: 5 // Unlock at level 5
         },
         forest: {
           name: 'Enchanted Forest',
@@ -163,7 +177,8 @@
           uiBackground: 'rgba(45, 74, 45, 0.9)',
           uiBorder: '#80ed99',
           buttonGradient: ['#57cc99', '#80ed99'],
-          particleGlow: true
+          particleGlow: true,
+          unlockLevel: 8 // Unlock at level 8
         },
         candy: {
           name: 'Candy Pop',
@@ -174,7 +189,8 @@
           uiBackground: 'rgba(255, 224, 240, 0.95)',
           uiBorder: '#ff69b4',
           buttonGradient: ['#ff69b4', '#dda0dd'],
-          particleGlow: false
+          particleGlow: false,
+          unlockLevel: 12 // Unlock at level 12
         },
         midnight: {
           name: 'Midnight Galaxy',
@@ -185,7 +201,8 @@
           uiBackground: 'rgba(17, 0, 51, 0.95)',
           uiBorder: '#9d4edd',
           buttonGradient: ['#7b2cbf', '#c77dff'],
-          particleGlow: true
+          particleGlow: true,
+          unlockLevel: 15 // Unlock at level 15
         }
       };
 
@@ -200,7 +217,8 @@
         dpr: 1,
 
         // Game state
-        gameState: 'menu', // menu, playing, paused, levelComplete, upgradeSelect, gameOver, settings, levelSelect
+        gameState: 'menu', // menu, playing, paused, levelComplete, upgradeSelect, gameOver, settings, levelSelect, stats, modeSelect, tutorial
+        gameMode: 'classic', // classic, timeAttack, zen, precision
         level: 1,
         score: 0,
         highScore: 0,
@@ -213,9 +231,19 @@
         balls: [],
         particles: [],
         ripples: [],
+        floatingTexts: [],
+        confetti: [],
         numballs: 0,
         target: 0,
         numPopped: 0,
+
+        // Star rating for current level
+        stars: 0,
+        levelStars: {}, // Track stars per level
+
+        // Streak system
+        streak: 0,
+        maxStreak: 0,
 
         // Player upgrades (persist across levels)
         upgrades: {
@@ -224,9 +252,38 @@
           megaBallAvailable: false  // Has a mega ball ready to use
         },
 
+        // Screen effects
+        screenShake: { active: false, intensity: 0, duration: 0, startTime: 0 },
+        slowMo: { active: false, factor: 1, duration: 0, startTime: 0 },
+
+        // Time attack mode
+        timeRemaining: 0,
+        timeAttackScore: 0,
+
+        // Statistics (persistent)
+        stats: {
+          totalPops: 0,
+          bestCombo: 0,
+          highestLevel: 0,
+          gamesPlayed: 0,
+          totalPlayTime: 0,
+          totalScore: 0
+        },
+
+        // Unlocks
+        unlocks: {
+          highestLevelReached: 1
+        },
+
+        // Tutorial
+        tutorialSeen: false,
+        showTip: false,
+        currentTip: '',
+
         // Animation
         lastTime: 0,
         deltaTime: 0,
+        sessionStartTime: 0,
 
         // Settings
         settings: {
@@ -263,11 +320,42 @@
           this.colorSpeed = 0.02 + Math.random() * 0.02;
           this.glowIntensity = 0;
 
-          // Special ball types for higher levels
-          this.type = options.type || 'normal';
+          // Special ball types
+          this.type = options.type || 'normal'; // normal, golden, bomb, frozen, speed
           this.speedMultiplier = options.speedMultiplier || 1;
           this.shrinkSpeed = options.shrinkSpeed || 1;
           this.isMegaBall = options.isMegaBall || false;
+          this.pointMultiplier = 1;
+          this.bombRadius = 0; // For bomb balls
+
+          // Apply special type properties
+          this.applySpecialType();
+        }
+
+        applySpecialType() {
+          switch (this.type) {
+            case 'golden':
+              this.color = '#ffd700';
+              this.pointMultiplier = 3;
+              this.glowIntensity = 0.5;
+              break;
+            case 'bomb':
+              this.color = '#ff4444';
+              this.bombRadius = CONFIG.MAX_RADIUS * 0.6;
+              break;
+            case 'frozen':
+              this.color = '#87ceeb';
+              this.vx = 0;
+              this.vy = 0;
+              this.speedMultiplier = 0;
+              this.pointMultiplier = 2;
+              break;
+            case 'speed':
+              this.color = '#00ff88';
+              this.speedMultiplier = 2;
+              this.pointMultiplier = 1.5;
+              break;
+          }
         }
 
         getRandomColor() {
@@ -278,9 +366,14 @@
         update(dt, width, height) {
           if (this.isDead) return;
 
-          const speed = dt * 60 / 1000;
+          // Apply slow-mo factor
+          const slowFactor = state.slowMo.active ? state.slowMo.factor : 1;
+          const speed = (dt * 60 / 1000) * slowFactor;
 
           if (!this.isActive) {
+            // Frozen balls don't move
+            if (this.type === 'frozen') return;
+
             // Bounce off walls
             if (this.x - this.radius < 0 || this.x + this.radius > width) {
               this.vx *= -1;
@@ -294,8 +387,11 @@
             this.x += this.vx * speed * this.speedMultiplier;
             this.y += this.vy * speed * this.speedMultiplier;
 
-            // Color animation
+            // Color animation (pulsing for special types)
             this.colorPhase += this.colorSpeed * speed;
+            if (this.type === 'golden' || this.type === 'bomb') {
+              this.glowIntensity = 0.3 + Math.sin(this.colorPhase * 2) * 0.2;
+            }
           } else {
             // Active ball expansion/contraction
             if (this.isExpanding) {
@@ -327,8 +423,9 @@
           ctx.save();
           ctx.globalAlpha = Math.max(0, this.alpha);
 
-          // Glow effect for active balls (enhanced for mega ball)
-          if (this.isActive && this.glowIntensity > 0) {
+          // Glow effect for active balls and special types
+          const shouldGlow = this.isActive || this.type === 'golden' || this.type === 'bomb' || this.isMegaBall;
+          if (shouldGlow && this.glowIntensity > 0) {
             ctx.shadowColor = this.isMegaBall ? '#ffd700' : this.color;
             ctx.shadowBlur = this.isMegaBall ? 40 * this.glowIntensity : 20 * this.glowIntensity;
           }
@@ -353,8 +450,22 @@
           ctx.fillStyle = gradient;
           ctx.fill();
 
+          // Special type indicators
+          if (!this.isActive && this.type !== 'normal') {
+            ctx.font = `${this.radius * 0.8}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffffff';
+            switch (this.type) {
+              case 'golden': ctx.fillText('$', this.x, this.y); break;
+              case 'bomb': ctx.fillText('💣', this.x, this.y); break;
+              case 'frozen': ctx.fillText('❄', this.x, this.y); break;
+              case 'speed': ctx.fillText('⚡', this.x, this.y); break;
+            }
+          }
+
           // Shine effect
-          if (this.radius > 5) {
+          if (this.radius > 5 && this.type === 'normal') {
             ctx.beginPath();
             ctx.arc(
               this.x - this.radius * 0.25,
@@ -474,6 +585,114 @@
           ctx.restore();
         }
       }
+
+      // ============================================
+      // FLOATING TEXT CLASS (Score popups)
+      // ============================================
+      class FloatingText {
+        constructor(x, y, text, options = {}) {
+          this.x = x;
+          this.y = y;
+          this.text = text;
+          this.color = options.color || '#ffffff';
+          this.fontSize = options.fontSize || 20;
+          this.alpha = 1;
+          this.vy = -2;
+          this.lifetime = options.lifetime || 1000;
+          this.startTime = Date.now();
+          this.scale = options.scale || 1;
+          this.isCombo = options.isCombo || false;
+        }
+
+        update(dt) {
+          const speed = dt * 60 / 1000;
+          this.y += this.vy * speed;
+          const elapsed = Date.now() - this.startTime;
+          this.alpha = Math.max(0, 1 - elapsed / this.lifetime);
+          if (this.isCombo) {
+            this.scale = 1 + Math.sin(elapsed * 0.01) * 0.1;
+          }
+          return this.alpha > 0;
+        }
+
+        draw(ctx) {
+          ctx.save();
+          ctx.globalAlpha = this.alpha;
+          ctx.font = `bold ${this.fontSize * this.scale}px 'Segoe UI', sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Shadow for visibility
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+          ctx.shadowBlur = 4;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 2;
+
+          ctx.fillStyle = this.color;
+          ctx.fillText(this.text, this.x, this.y);
+          ctx.restore();
+        }
+      }
+
+      // ============================================
+      // CONFETTI CLASS (Level complete celebration)
+      // ============================================
+      class Confetti {
+        constructor(x, y, color) {
+          this.x = x;
+          this.y = y;
+          this.color = color;
+          this.width = Math.random() * 10 + 5;
+          this.height = Math.random() * 6 + 3;
+          this.vx = (Math.random() - 0.5) * 10;
+          this.vy = Math.random() * -8 - 4;
+          this.rotation = Math.random() * Math.PI * 2;
+          this.rotationSpeed = (Math.random() - 0.5) * 0.3;
+          this.gravity = 0.2;
+          this.alpha = 1;
+        }
+
+        update(dt) {
+          const speed = dt * 60 / 1000;
+          this.x += this.vx * speed;
+          this.y += this.vy * speed;
+          this.vy += this.gravity * speed;
+          this.rotation += this.rotationSpeed * speed;
+
+          // Fade out when below screen
+          if (this.y > state.height) {
+            this.alpha -= 0.05 * speed;
+          }
+
+          return this.alpha > 0;
+        }
+
+        draw(ctx) {
+          ctx.save();
+          ctx.globalAlpha = this.alpha;
+          ctx.translate(this.x, this.y);
+          ctx.rotate(this.rotation);
+          ctx.fillStyle = this.color;
+          ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+          ctx.restore();
+        }
+      }
+
+      // ============================================
+      // TIPS SYSTEM
+      // ============================================
+      const TIPS = [
+        "Tap once to start a chain reaction!",
+        "Golden balls ($) are worth 3x points!",
+        "Bomb balls (💣) create secondary explosions!",
+        "Frozen balls (❄) don't move - easy targets!",
+        "Speed balls (⚡) give bonus points!",
+        "Build combos for higher scores!",
+        "Try to pop more balls for more stars!",
+        "Upgrade wisely between levels!",
+        "Mega balls have 2x the explosion radius!",
+        "Keep your streak going for bonus multipliers!"
+      ];
 
       // ============================================
       // AUDIO SYSTEM
@@ -659,6 +878,54 @@
           } catch (e) {
             return null;
           }
+        },
+
+        saveStats(stats) {
+          try {
+            localStorage.setItem(CONFIG.STATS_KEY, JSON.stringify(stats));
+          } catch (e) {
+            // Storage not available
+          }
+        },
+
+        loadStats() {
+          try {
+            const saved = localStorage.getItem(CONFIG.STATS_KEY);
+            return saved ? JSON.parse(saved) : null;
+          } catch (e) {
+            return null;
+          }
+        },
+
+        saveUnlocks(unlocks) {
+          try {
+            localStorage.setItem(CONFIG.UNLOCKS_KEY, JSON.stringify(unlocks));
+          } catch (e) {
+            // Storage not available
+          }
+        },
+
+        loadUnlocks() {
+          try {
+            const saved = localStorage.getItem(CONFIG.UNLOCKS_KEY);
+            return saved ? JSON.parse(saved) : null;
+          } catch (e) {
+            return null;
+          }
+        },
+
+        saveTutorialSeen() {
+          try {
+            localStorage.setItem('popemall_tutorial', 'true');
+          } catch (e) {}
+        },
+
+        loadTutorialSeen() {
+          try {
+            return localStorage.getItem('popemall_tutorial') === 'true';
+          } catch (e) {
+            return false;
+          }
         }
       };
 
@@ -712,8 +979,30 @@
         },
 
         getSpecialBallChance(level) {
-          if (level < 8) return 0;
-          return Math.min(0.3, (level - 8) * 0.03);
+          if (level < 5) return 0;
+          return Math.min(0.25, (level - 5) * 0.025);
+        },
+
+        getRandomSpecialType() {
+          const types = CONFIG.SPECIAL_BALL_TYPES;
+          return types[Math.floor(Math.random() * types.length)];
+        },
+
+        calculateStars(popped, total) {
+          const ratio = popped / total;
+          if (ratio >= CONFIG.STAR_THRESHOLDS.three) return 3;
+          if (ratio >= CONFIG.STAR_THRESHOLDS.two) return 2;
+          return 1;
+        },
+
+        getStreakBonus(streak) {
+          // Streak multiplier: 1x, 1.1x, 1.2x, 1.3x, etc.
+          return 1 + Math.min(streak * 0.1, 0.5); // Max 50% bonus
+        },
+
+        isThemeUnlocked(themeKey) {
+          const theme = THEMES[themeKey];
+          return state.unlocks.highestLevelReached >= theme.unlockLevel;
         }
       };
 
@@ -763,19 +1052,45 @@
           ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
           ctx.textBaseline = 'top';
 
-          // Level & Target (top left)
+          // Level & Target (top left) - different for different modes
           ctx.fillStyle = theme.textColor;
           ctx.textAlign = 'left';
-          ctx.fillText(`Level ${state.level}`, padding, padding);
-          ctx.font = `${fontSize * 0.7}px 'Segoe UI', sans-serif`;
-          ctx.fillText(`Pop ${state.target} balls`, padding, padding + fontSize + 5);
+
+          if (state.gameMode === 'timeAttack') {
+            ctx.fillText('TIME ATTACK', padding, padding);
+            const timeLeft = Math.ceil(state.timeRemaining);
+            ctx.font = `${fontSize * 0.7}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = timeLeft < 10 ? '#ff4444' : theme.textColor;
+            ctx.fillText(`Time: ${timeLeft}s`, padding, padding + fontSize + 5);
+          } else if (state.gameMode === 'zen') {
+            ctx.fillText('ZEN MODE', padding, padding);
+            ctx.font = `${fontSize * 0.7}px 'Segoe UI', sans-serif`;
+            ctx.fillText('Relax and enjoy', padding, padding + fontSize + 5);
+          } else if (state.gameMode === 'precision') {
+            ctx.fillText(`Level ${state.level}`, padding, padding);
+            ctx.font = `${fontSize * 0.7}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = state.numPopped === state.target ? '#80ed99' : theme.textColor;
+            ctx.fillText(`Pop EXACTLY ${state.target}`, padding, padding + fontSize + 5);
+          } else {
+            ctx.fillText(`Level ${state.level}`, padding, padding);
+            ctx.font = `${fontSize * 0.7}px 'Segoe UI', sans-serif`;
+            ctx.fillText(`Pop ${state.target} balls`, padding, padding + fontSize + 5);
+          }
+
+          // Streak indicator (below target)
+          if (state.streak > 0 && state.gameMode === 'classic') {
+            ctx.font = `${fontSize * 0.6}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = '#ffd700';
+            ctx.fillText(`🔥 Streak: ${state.streak}`, padding, padding + fontSize * 2 + 10);
+          }
 
           // Score (top center)
           ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
           ctx.textAlign = 'center';
+          ctx.fillStyle = theme.textColor;
           ctx.fillText(`Score: ${state.score}`, state.width / 2, padding);
 
-          // High score
+          // High score / streak bonus
           ctx.font = `${fontSize * 0.6}px 'Segoe UI', sans-serif`;
           ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.6)`;
           ctx.fillText(`Best: ${state.highScore}`, state.width / 2, padding + fontSize + 5);
@@ -784,7 +1099,11 @@
           ctx.textAlign = 'right';
           ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
           ctx.fillStyle = theme.textColor;
-          ctx.fillText(`${state.numPopped} / ${state.target}`, state.width - padding, padding);
+          if (state.gameMode !== 'zen') {
+            ctx.fillText(`${state.numPopped} / ${state.target}`, state.width - padding, padding);
+          } else {
+            ctx.fillText(`Popped: ${state.numPopped}`, state.width - padding, padding);
+          }
 
           // Mega ball indicator (bottom center)
           if (state.upgrades.megaBallAvailable) {
@@ -837,25 +1156,32 @@
           }
 
           ctx.fillStyle = theme.textColor;
-          ctx.fillText("Pop'em All!", state.width / 2, state.height * 0.2);
+          ctx.fillText("Pop'em All!", state.width / 2, state.height * 0.15);
 
           ctx.shadowBlur = 0;
 
-          // High score
-          const subtitleSize = titleSize * 0.4;
+          // High score and streak
+          const subtitleSize = titleSize * 0.35;
           ctx.font = `${subtitleSize}px 'Segoe UI', sans-serif`;
           ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.7)`;
-          ctx.fillText(`High Score: ${state.highScore}`, state.width / 2, state.height * 0.28);
+          ctx.fillText(`High Score: ${state.highScore}`, state.width / 2, state.height * 0.22);
+          if (state.maxStreak > 0) {
+            ctx.fillText(`Best Streak: ${state.maxStreak}`, state.width / 2, state.height * 0.27);
+          }
 
-          // Buttons
-          this.drawButton(ctx, state.width / 2, state.height * 0.45, 'Play', 'play');
-          this.drawButton(ctx, state.width / 2, state.height * 0.58, 'Level Select', 'levelSelect');
-          this.drawButton(ctx, state.width / 2, state.height * 0.71, 'Settings', 'settings');
+          // Buttons - 2 columns for more options
+          const btnY = state.height * 0.38;
+          const btnSpacing = state.height * 0.12;
+          this.drawButton(ctx, state.width / 2, btnY, 'Play', 'play');
+          this.drawButton(ctx, state.width / 2, btnY + btnSpacing, 'Game Modes', 'modeSelect');
+          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 2, 'Level Select', 'levelSelect');
+          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 3, 'Statistics', 'stats');
+          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 4, 'Settings', 'settings');
 
           // Theme indicator
           ctx.font = `${subtitleSize * 0.8}px 'Segoe UI', sans-serif`;
           ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.5)`;
-          ctx.fillText(`Theme: ${theme.name}`, state.width / 2, state.height * 0.9);
+          ctx.fillText(`Theme: ${theme.name}`, state.width / 2, state.height * 0.95);
 
           ctx.restore();
         },
@@ -945,29 +1271,55 @@
           }
 
           ctx.fillStyle = theme.ballColors[0];
-          ctx.fillText('LEVEL COMPLETE!', state.width / 2, state.height * 0.2);
+          ctx.fillText('LEVEL COMPLETE!', state.width / 2, state.height * 0.12);
 
           ctx.shadowBlur = 0;
 
+          // Star rating
+          const starSize = titleSize * 0.8;
+          ctx.font = `${starSize}px sans-serif`;
+          let starDisplay = '';
+          for (let i = 0; i < 3; i++) {
+            starDisplay += i < state.stars ? '⭐' : '☆';
+          }
+          ctx.fillText(starDisplay, state.width / 2, state.height * 0.22);
+
           // Stats
-          const statsSize = titleSize * 0.45;
+          const statsSize = titleSize * 0.4;
           ctx.font = `${statsSize}px 'Segoe UI', sans-serif`;
           ctx.fillStyle = theme.textColor;
           ctx.fillText(`Popped: ${state.numPopped} / ${state.numballs}`, state.width / 2, state.height * 0.32);
-          ctx.fillText(`Score: +${state.levelScore || 0}`, state.width / 2, state.height * 0.39);
+
+          const streakBonus = LevelSystem.getStreakBonus(state.streak);
+          const bonusText = streakBonus > 1 ? ` (${Math.round((streakBonus - 1) * 100)}% streak bonus!)` : '';
+          ctx.fillText(`Score: +${state.levelScore || 0}${bonusText}`, state.width / 2, state.height * 0.38);
+
           if (state.maxCombo > 1) {
-            ctx.fillText(`Max Combo: ${state.maxCombo}x`, state.width / 2, state.height * 0.46);
+            ctx.fillText(`Max Combo: ${state.maxCombo}x`, state.width / 2, state.height * 0.44);
+          }
+
+          // Streak display
+          if (state.streak > 0) {
+            ctx.fillStyle = '#ffd700';
+            ctx.fillText(`🔥 Level Streak: ${state.streak}`, state.width / 2, state.height * 0.50);
+          }
+
+          // Tip
+          if (state.showTip && state.currentTip) {
+            ctx.font = `italic ${statsSize * 0.8}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.7)`;
+            ctx.fillText(`💡 ${state.currentTip}`, state.width / 2, state.height * 0.57);
           }
 
           // Button to go to upgrade selection
-          this.drawButton(ctx, state.width / 2, state.height * 0.62, 'Choose Upgrade', 'chooseUpgrade');
+          this.drawButton(ctx, state.width / 2, state.height * 0.68, 'Choose Upgrade', 'chooseUpgrade');
 
           // Skip upgrade option
           ctx.font = `${statsSize * 0.7}px 'Segoe UI', sans-serif`;
           ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.6)`;
-          ctx.fillText('or', state.width / 2, state.height * 0.73);
+          ctx.fillText('or', state.width / 2, state.height * 0.78);
 
-          this.drawButton(ctx, state.width / 2, state.height * 0.82, 'Skip to Next Level', 'skipUpgrade');
+          this.drawButton(ctx, state.width / 2, state.height * 0.86, 'Skip to Next Level', 'skipUpgrade');
 
           ctx.restore();
         },
@@ -1187,6 +1539,7 @@
             const x = themeStartX + i * themeWidth;
             const y = startY + spacing * 3.6;
             const isActive = state.settings.theme === key;
+            const isUnlocked = LevelSystem.isThemeUnlocked(key);
 
             if (!state.buttons) state.buttons = {};
             state.buttons[`theme_${key}`] = {
@@ -1196,20 +1549,30 @@
               height: 40
             };
 
-            ctx.fillStyle = isActive ? THEMES[key].buttonGradient[0] : THEMES[key].uiBackground;
+            if (isUnlocked) {
+              ctx.fillStyle = isActive ? THEMES[key].buttonGradient[0] : THEMES[key].uiBackground;
+            } else {
+              ctx.fillStyle = 'rgba(60, 60, 60, 0.8)';
+            }
             ctx.beginPath();
             ctx.roundRect(x - themeWidth / 2 + 5, y - 20, themeWidth - 10, 40, 8);
             ctx.fill();
 
-            if (isActive) {
+            if (isActive && isUnlocked) {
               ctx.strokeStyle = '#fff';
               ctx.lineWidth = 2;
               ctx.stroke();
             }
 
-            ctx.fillStyle = THEMES[key].textColor;
-            ctx.font = `${optionSize * 0.6}px 'Segoe UI', sans-serif`;
-            ctx.fillText(THEMES[key].name.split(' ')[0], x, y);
+            if (isUnlocked) {
+              ctx.fillStyle = THEMES[key].textColor;
+              ctx.font = `${optionSize * 0.6}px 'Segoe UI', sans-serif`;
+              ctx.fillText(THEMES[key].name.split(' ')[0], x, y);
+            } else {
+              ctx.fillStyle = '#888';
+              ctx.font = `${optionSize * 0.5}px 'Segoe UI', sans-serif`;
+              ctx.fillText(`🔒 Lv ${THEMES[key].unlockLevel}`, x, y);
+            }
           });
 
           // Back button
@@ -1297,13 +1660,219 @@
 
               // Level number
               ctx.fillStyle = '#ffffff';
-              ctx.font = `bold ${buttonSize * 0.4}px 'Segoe UI', sans-serif`;
-              ctx.fillText(level.toString(), x + buttonSize / 2, y + buttonSize / 2);
+              ctx.font = `bold ${buttonSize * 0.35}px 'Segoe UI', sans-serif`;
+              ctx.fillText(level.toString(), x + buttonSize / 2, y + buttonSize * 0.4);
+
+              // Stars for completed levels
+              const stars = state.levelStars[level] || 0;
+              if (stars > 0) {
+                ctx.font = `${buttonSize * 0.2}px sans-serif`;
+                let starStr = '';
+                for (let i = 0; i < 3; i++) {
+                  starStr += i < stars ? '⭐' : '☆';
+                }
+                ctx.fillText(starStr, x + buttonSize / 2, y + buttonSize * 0.7);
+              }
             }
           }
 
           // Back button
           this.drawButton(ctx, state.width / 2, state.height * 0.88, 'Back', 'back');
+
+          ctx.restore();
+        },
+
+        drawModeSelect(ctx) {
+          this.drawBackground(ctx);
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Title
+          const titleSize = Math.min(40, state.height * 0.08);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText('Game Modes', state.width / 2, state.height * 0.1);
+
+          // Mode cards
+          const cardWidth = Math.min(180, state.width * 0.22);
+          const cardHeight = Math.min(180, state.height * 0.45);
+          const cardSpacing = Math.min(30, state.width * 0.03);
+          const modes = [
+            { id: 'mode_classic', name: 'Classic', icon: '🎮', desc: 'Complete levels\nwith targets' },
+            { id: 'mode_timeAttack', name: 'Time Attack', icon: '⏱️', desc: '60 seconds\nto score big!' },
+            { id: 'mode_zen', name: 'Zen', icon: '🧘', desc: 'No targets\njust relax' },
+            { id: 'mode_precision', name: 'Precision', icon: '🎯', desc: 'Pop EXACTLY\nthe target' }
+          ];
+
+          const totalWidth = cardWidth * modes.length + cardSpacing * (modes.length - 1);
+          const startX = (state.width - totalWidth) / 2;
+          const cardY = state.height * 0.25;
+
+          modes.forEach((mode, i) => {
+            const x = startX + i * (cardWidth + cardSpacing);
+
+            if (!state.buttons) state.buttons = {};
+            state.buttons[mode.id] = { x, y: cardY, width: cardWidth, height: cardHeight };
+
+            // Card background
+            ctx.fillStyle = theme.uiBackground;
+            ctx.beginPath();
+            ctx.roundRect(x, cardY, cardWidth, cardHeight, 12);
+            ctx.fill();
+
+            ctx.strokeStyle = theme.uiBorder;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Icon
+            ctx.font = `${cardHeight * 0.2}px sans-serif`;
+            ctx.fillText(mode.icon, x + cardWidth / 2, cardY + cardHeight * 0.2);
+
+            // Name
+            ctx.font = `bold ${cardHeight * 0.1}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = theme.textColor;
+            ctx.fillText(mode.name, x + cardWidth / 2, cardY + cardHeight * 0.4);
+
+            // Description
+            ctx.font = `${cardHeight * 0.08}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.7)`;
+            const lines = mode.desc.split('\n');
+            lines.forEach((line, li) => {
+              ctx.fillText(line, x + cardWidth / 2, cardY + cardHeight * 0.55 + li * cardHeight * 0.1);
+            });
+
+            // Play button
+            ctx.font = `bold ${cardHeight * 0.08}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = theme.ballColors[0];
+            ctx.fillText('TAP TO PLAY', x + cardWidth / 2, cardY + cardHeight * 0.85);
+          });
+
+          // Back button
+          this.drawButton(ctx, state.width / 2, state.height * 0.88, 'Back', 'back');
+
+          ctx.restore();
+        },
+
+        drawStats(ctx) {
+          this.drawBackground(ctx);
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Title
+          const titleSize = Math.min(40, state.height * 0.08);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText('Statistics', state.width / 2, state.height * 0.1);
+
+          // Stats display
+          const statSize = titleSize * 0.5;
+          const startY = state.height * 0.22;
+          const spacing = state.height * 0.1;
+
+          const stats = [
+            { label: 'Total Pops', value: state.stats.totalPops.toLocaleString(), icon: '💥' },
+            { label: 'Best Combo', value: `${state.stats.bestCombo}x`, icon: '🔥' },
+            { label: 'Highest Level', value: state.stats.highestLevel, icon: '🏆' },
+            { label: 'Games Played', value: state.stats.gamesPlayed, icon: '🎮' },
+            { label: 'Total Score', value: state.stats.totalScore.toLocaleString(), icon: '⭐' },
+            { label: 'Play Time', value: this.formatTime(state.stats.totalPlayTime), icon: '⏱️' }
+          ];
+
+          stats.forEach((stat, i) => {
+            const y = startY + i * spacing;
+
+            ctx.font = `${statSize}px sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.fillText(stat.icon, state.width * 0.25, y);
+
+            ctx.font = `${statSize * 0.8}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.7)`;
+            ctx.fillText(stat.label, state.width * 0.32, y);
+
+            ctx.textAlign = 'right';
+            ctx.font = `bold ${statSize}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = theme.textColor;
+            ctx.fillText(stat.value, state.width * 0.75, y);
+          });
+
+          // Back button
+          this.drawButton(ctx, state.width / 2, state.height * 0.88, 'Back', 'back');
+
+          ctx.restore();
+        },
+
+        formatTime(seconds) {
+          const hrs = Math.floor(seconds / 3600);
+          const mins = Math.floor((seconds % 3600) / 60);
+          const secs = Math.floor(seconds % 60);
+          if (hrs > 0) {
+            return `${hrs}h ${mins}m`;
+          }
+          return `${mins}m ${secs}s`;
+        },
+
+        drawTutorial(ctx) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+          ctx.fillRect(0, 0, state.width, state.height);
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Title
+          const titleSize = Math.min(40, state.height * 0.08);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText('How To Play', state.width / 2, state.height * 0.1);
+
+          // Tutorial steps
+          const stepSize = titleSize * 0.45;
+          const steps = [
+            { icon: '👆', text: 'Tap anywhere to start a chain reaction' },
+            { icon: '💥', text: 'Balls that touch your pop will also explode' },
+            { icon: '🎯', text: 'Pop at least the target number to win' },
+            { icon: '⭐', text: 'Pop more balls for higher star ratings' },
+            { icon: '🔥', text: 'Build combos for bonus points' },
+            { icon: '💡', text: 'Look for special balls with bonus effects!' }
+          ];
+
+          const startY = state.height * 0.2;
+          const spacing = state.height * 0.11;
+
+          steps.forEach((step, i) => {
+            const y = startY + i * spacing;
+
+            ctx.font = `${stepSize * 1.2}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText(step.icon, state.width * 0.15, y);
+
+            ctx.font = `${stepSize}px 'Segoe UI', sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.fillStyle = theme.textColor;
+            ctx.fillText(step.text, state.width * 0.22, y);
+          });
+
+          // Special ball types
+          ctx.font = `bold ${stepSize}px 'Segoe UI', sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText('Special Balls:', state.width / 2, state.height * 0.78);
+
+          ctx.font = `${stepSize * 0.8}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.8)`;
+          ctx.fillText('$ = 3x points   💣 = Chain explosion   ❄ = Stationary   ⚡ = Speed bonus', state.width / 2, state.height * 0.84);
+
+          // Start button
+          this.drawButton(ctx, state.width / 2, state.height * 0.92, "Let's Play!", 'startFromTutorial');
 
           ctx.restore();
         }
@@ -1323,6 +1892,27 @@
           if (savedSettings) {
             state.settings = { ...state.settings, ...savedSettings };
           }
+
+          // Load stats
+          const savedStats = Storage.loadStats();
+          if (savedStats) {
+            state.stats = { ...state.stats, ...savedStats };
+          }
+
+          // Load unlocks
+          const savedUnlocks = Storage.loadUnlocks();
+          if (savedUnlocks) {
+            state.unlocks = { ...state.unlocks, ...savedUnlocks };
+          }
+
+          // Check if tutorial has been seen
+          state.tutorialSeen = Storage.loadTutorialSeen();
+          if (!state.tutorialSeen) {
+            state.gameState = 'tutorial';
+          }
+
+          // Track session start time
+          state.sessionStartTime = Date.now();
 
           // Initialize audio
           Audio.init();
@@ -1345,6 +1935,13 @@
                 state.gameState = 'playing';
               }
             }
+          });
+
+          // Save play time on page unload
+          window.addEventListener('beforeunload', () => {
+            const sessionTime = (Date.now() - state.sessionStartTime) / 1000;
+            state.stats.totalPlayTime += sessionTime;
+            Storage.saveStats(state.stats);
           });
 
           // Start game loop
@@ -1397,13 +1994,44 @@
           state.buttons = state.buttons || {};
 
           // Check button clicks based on game state
-          if (state.gameState === 'menu') {
+          if (state.gameState === 'tutorial') {
+            if (this.isButtonClick('startFromTutorial', x, y)) {
+              state.tutorialSeen = true;
+              Storage.saveTutorialSeen();
+              state.gameState = 'menu';
+            }
+          } else if (state.gameState === 'menu') {
             if (this.isButtonClick('play', x, y)) {
+              state.gameMode = 'classic';
               this.startGame(1);
+            } else if (this.isButtonClick('modeSelect', x, y)) {
+              state.gameState = 'modeSelect';
             } else if (this.isButtonClick('levelSelect', x, y)) {
               state.gameState = 'levelSelect';
+            } else if (this.isButtonClick('stats', x, y)) {
+              state.gameState = 'stats';
             } else if (this.isButtonClick('settings', x, y)) {
               state.gameState = 'settings';
+            }
+          } else if (state.gameState === 'modeSelect') {
+            if (this.isButtonClick('mode_classic', x, y)) {
+              state.gameMode = 'classic';
+              this.startGame(1);
+            } else if (this.isButtonClick('mode_timeAttack', x, y)) {
+              state.gameMode = 'timeAttack';
+              this.startTimeAttack();
+            } else if (this.isButtonClick('mode_zen', x, y)) {
+              state.gameMode = 'zen';
+              this.startZenMode();
+            } else if (this.isButtonClick('mode_precision', x, y)) {
+              state.gameMode = 'precision';
+              this.startGame(1);
+            } else if (this.isButtonClick('back', x, y)) {
+              state.gameState = 'menu';
+            }
+          } else if (state.gameState === 'stats') {
+            if (this.isButtonClick('back', x, y)) {
+              state.gameState = 'menu';
             }
           } else if (state.gameState === 'playing') {
             this.handleGameClick(x, y);
@@ -1411,7 +2039,13 @@
             if (this.isButtonClick('resume', x, y)) {
               state.gameState = 'playing';
             } else if (this.isButtonClick('restart', x, y)) {
-              this.startGame(1);
+              if (state.gameMode === 'timeAttack') {
+                this.startTimeAttack();
+              } else if (state.gameMode === 'zen') {
+                this.startZenMode();
+              } else {
+                this.startGame(1);
+              }
             } else if (this.isButtonClick('mainMenu', x, y)) {
               state.gameState = 'menu';
             }
@@ -1425,7 +2059,13 @@
             this.handleUpgradeClick(x, y);
           } else if (state.gameState === 'gameOver') {
             if (this.isButtonClick('restart', x, y)) {
-              this.startGame(1);
+              if (state.gameMode === 'timeAttack') {
+                this.startTimeAttack();
+              } else if (state.gameMode === 'zen') {
+                this.startZenMode();
+              } else {
+                this.startGame(1);
+              }
             } else if (this.isButtonClick('mainMenu', x, y)) {
               state.gameState = 'menu';
             }
@@ -1536,8 +2176,14 @@
           // Check theme buttons
           Object.keys(THEMES).forEach(key => {
             if (this.isButtonClick(`theme_${key}`, x, y)) {
-              state.settings.theme = key;
-              document.body.style.backgroundColor = THEMES[key].background;
+              // Only allow selecting unlocked themes
+              if (LevelSystem.isThemeUnlocked(key)) {
+                state.settings.theme = key;
+                document.body.style.backgroundColor = THEMES[key].background;
+              } else {
+                // Play a "locked" sound or haptic
+                Haptic.pop();
+              }
             }
           });
         },
@@ -1567,23 +2213,43 @@
           state.balls = [];
           state.particles = [];
           state.ripples = [];
+          state.floatingTexts = [];
+          state.confetti = [];
           state.levelScore = 0;
+          state.stars = 0;
+
+          // Reset effects
+          state.screenShake = { active: false, intensity: 0, duration: 0, startTime: 0 };
+          state.slowMo = { active: false, factor: 1, duration: 0, startTime: 0 };
+
+          // Show random tip
+          state.showTip = Math.random() < 0.5;
+          state.currentTip = TIPS[Math.floor(Math.random() * TIPS.length)];
 
           if (level === 1) {
             state.score = 0;
+            state.streak = 0;
             // Reset all upgrades when starting fresh
             state.upgrades = {
               bonusBalls: 0,
               radiusBonus: 0,
               megaBallAvailable: false
             };
+            // Increment games played
+            state.stats.gamesPlayed++;
           }
 
           state.numballs = LevelSystem.calculateBallCount(level);
           state.target = LevelSystem.calculateTarget(level, state.numballs);
 
+          // For precision mode, target is slightly higher but exact
+          if (state.gameMode === 'precision') {
+            state.target = Math.min(Math.ceil(state.numballs * 0.5), state.numballs - 1);
+          }
+
           const options = LevelSystem.getBallOptions(level);
           const theme = THEMES[state.settings.theme];
+          const specialChance = LevelSystem.getSpecialBallChance(level);
 
           // Create balls
           for (let i = 0; i < state.numballs; i++) {
@@ -1591,9 +2257,14 @@
             const y = CONFIG.BASE_RADIUS + Math.random() * (state.height - 2 * CONFIG.BASE_RADIUS);
             const color = theme.ballColors[Math.floor(Math.random() * theme.ballColors.length)];
 
+            // Determine if this should be a special ball
+            const isSpecial = Math.random() < specialChance;
+            const ballType = isSpecial ? LevelSystem.getRandomSpecialType() : 'normal';
+
             const ball = new Ball(x, y, false, {
               ...options,
-              color
+              color,
+              type: ballType
             });
             state.balls.push(ball);
           }
@@ -1601,50 +2272,247 @@
           state.gameState = 'playing';
         },
 
+        startTimeAttack() {
+          state.level = 1;
+          state.clicks = 0;
+          state.numPopped = 0;
+          state.combo = 0;
+          state.maxCombo = 0;
+          state.lastPopTime = 0;
+          state.score = 0;
+          state.balls = [];
+          state.particles = [];
+          state.ripples = [];
+          state.floatingTexts = [];
+          state.confetti = [];
+          state.timeRemaining = CONFIG.TIME_ATTACK_DURATION;
+          state.timeAttackScore = 0;
+
+          state.screenShake = { active: false, intensity: 0, duration: 0, startTime: 0 };
+          state.slowMo = { active: false, factor: 1, duration: 0, startTime: 0 };
+
+          state.numballs = 20;
+          state.target = 999; // No real target
+
+          state.stats.gamesPlayed++;
+
+          this.spawnTimeAttackBalls();
+
+          state.gameState = 'playing';
+        },
+
+        spawnTimeAttackBalls() {
+          const theme = THEMES[state.settings.theme];
+
+          // Spawn more balls if too few
+          while (state.balls.filter(b => !b.isDead && !b.isActive).length < 15) {
+            const x = CONFIG.BASE_RADIUS + Math.random() * (state.width - 2 * CONFIG.BASE_RADIUS);
+            const y = CONFIG.BASE_RADIUS + Math.random() * (state.height - 2 * CONFIG.BASE_RADIUS);
+            const color = theme.ballColors[Math.floor(Math.random() * theme.ballColors.length)];
+
+            const isSpecial = Math.random() < 0.15;
+            const ballType = isSpecial ? LevelSystem.getRandomSpecialType() : 'normal';
+
+            const ball = new Ball(x, y, false, {
+              color,
+              type: ballType,
+              speedMultiplier: 1.2
+            });
+            state.balls.push(ball);
+          }
+        },
+
+        startZenMode() {
+          state.level = 1;
+          state.clicks = 0;
+          state.numPopped = 0;
+          state.combo = 0;
+          state.maxCombo = 0;
+          state.lastPopTime = 0;
+          state.score = 0;
+          state.balls = [];
+          state.particles = [];
+          state.ripples = [];
+          state.floatingTexts = [];
+          state.confetti = [];
+
+          state.screenShake = { active: false, intensity: 0, duration: 0, startTime: 0 };
+          state.slowMo = { active: false, factor: 1, duration: 0, startTime: 0 };
+
+          state.numballs = 30;
+          state.target = 0; // No target in zen mode
+
+          this.spawnZenBalls();
+
+          state.gameState = 'playing';
+        },
+
+        spawnZenBalls() {
+          const theme = THEMES[state.settings.theme];
+
+          while (state.balls.filter(b => !b.isDead && !b.isActive).length < 25) {
+            const x = CONFIG.BASE_RADIUS + Math.random() * (state.width - 2 * CONFIG.BASE_RADIUS);
+            const y = CONFIG.BASE_RADIUS + Math.random() * (state.height - 2 * CONFIG.BASE_RADIUS);
+            const color = theme.ballColors[Math.floor(Math.random() * theme.ballColors.length)];
+
+            const ball = new Ball(x, y, false, {
+              color,
+              speedMultiplier: 0.7 // Slower, more relaxing
+            });
+            state.balls.push(ball);
+          }
+        },
+
+        triggerScreenShake(intensity = CONFIG.SCREEN_SHAKE_INTENSITY) {
+          state.screenShake = {
+            active: true,
+            intensity: intensity,
+            duration: CONFIG.SCREEN_SHAKE_DURATION,
+            startTime: Date.now()
+          };
+        },
+
+        triggerSlowMo(factor = 0.3, duration = 1500) {
+          state.slowMo = {
+            active: true,
+            factor: factor,
+            duration: duration,
+            startTime: Date.now()
+          };
+        },
+
+        spawnConfetti() {
+          const theme = THEMES[state.settings.theme];
+          for (let i = 0; i < 50; i++) {
+            const x = Math.random() * state.width;
+            const y = state.height * 0.3;
+            const color = theme.ballColors[Math.floor(Math.random() * theme.ballColors.length)];
+            state.confetti.push(new Confetti(x, y, color));
+          }
+        },
+
         update(dt) {
           if (state.gameState !== 'playing') return;
+
+          // Update screen shake
+          if (state.screenShake.active) {
+            if (Date.now() - state.screenShake.startTime > state.screenShake.duration) {
+              state.screenShake.active = false;
+            }
+          }
+
+          // Update slow-mo
+          if (state.slowMo.active) {
+            if (Date.now() - state.slowMo.startTime > state.slowMo.duration) {
+              state.slowMo.active = false;
+              state.slowMo.factor = 1;
+            }
+          }
+
+          // Time attack countdown
+          if (state.gameMode === 'timeAttack') {
+            state.timeRemaining -= dt / 1000;
+            if (state.timeRemaining <= 0) {
+              state.timeRemaining = 0;
+              this.endTimeAttack();
+              return;
+            }
+            // Respawn balls in time attack
+            this.spawnTimeAttackBalls();
+          }
+
+          // Zen mode respawning
+          if (state.gameMode === 'zen') {
+            this.spawnZenBalls();
+            // Allow multiple clicks in zen mode
+            const anyActive = state.balls.some(ball => ball.isActive);
+            if (!anyActive && state.clicks > 0) {
+              state.clicks = 0;
+            }
+          }
 
           // Update balls
           state.balls.forEach(ball => ball.update(dt, state.width, state.height));
 
           // Check collisions and activate balls
-          if (state.clicks > 0) {
+          if (state.clicks > 0 || state.gameMode === 'timeAttack' || state.gameMode === 'zen') {
+            const ballsToActivate = [];
+
             state.balls.forEach(ball => {
               if (!ball.isActive && !ball.isDead) {
                 state.balls.forEach(other => {
                   if (other.isActive && other.radius > 0 && ball.collidesWith(other)) {
-                    ball.isActive = true;
-                    state.numPopped++;
-
-                    // Combo system
-                    const now = Date.now();
-                    if (now - state.lastPopTime < CONFIG.COMBO_WINDOW) {
-                      state.combo++;
-                      if (state.combo > state.maxCombo) state.maxCombo = state.combo;
-                      Audio.playCombo(state.combo);
-                      if (state.combo > 2) Haptic.combo();
-                    } else {
-                      state.combo = 1;
-                    }
-                    state.lastPopTime = now;
-
-                    // Score calculation
-                    const points = 10 * state.combo;
-                    state.score += points;
-                    state.levelScore = (state.levelScore || 0) + points;
-
-                    // Particles
-                    if (state.settings.particlesEnabled) {
-                      for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
-                        state.particles.push(new Particle(ball.x, ball.y, ball.color));
-                      }
-                    }
-
-                    Audio.playPop(0.8 + Math.random() * 0.4);
-                    Haptic.pop();
+                    ballsToActivate.push(ball);
                   }
                 });
               }
+            });
+
+            ballsToActivate.forEach(ball => {
+              if (ball.isActive) return; // Already activated
+              ball.isActive = true;
+              state.numPopped++;
+
+              // Combo system
+              const now = Date.now();
+              if (now - state.lastPopTime < CONFIG.COMBO_WINDOW) {
+                state.combo++;
+                if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+                Audio.playCombo(state.combo);
+                if (state.combo > 2) Haptic.combo();
+
+                // Screen shake on big combos
+                if (state.combo >= 5) {
+                  this.triggerScreenShake(state.combo * 1.5);
+                }
+              } else {
+                state.combo = 1;
+              }
+              state.lastPopTime = now;
+
+              // Score calculation with point multiplier and streak bonus
+              const streakBonus = LevelSystem.getStreakBonus(state.streak);
+              const basePoints = Math.floor(10 * state.combo * ball.pointMultiplier * streakBonus);
+              state.score += basePoints;
+              state.levelScore = (state.levelScore || 0) + basePoints;
+
+              // Update stats
+              state.stats.totalPops++;
+              state.stats.totalScore += basePoints;
+              if (state.combo > state.stats.bestCombo) {
+                state.stats.bestCombo = state.combo;
+              }
+
+              // Floating score text
+              const color = ball.type === 'golden' ? '#ffd700' :
+                           ball.type === 'speed' ? '#00ff88' : '#ffffff';
+              state.floatingTexts.push(new FloatingText(ball.x, ball.y, `+${basePoints}`, {
+                color: color,
+                fontSize: basePoints > 50 ? 28 : 20,
+                isCombo: state.combo >= 3
+              }));
+
+              // Particles
+              if (state.settings.particlesEnabled) {
+                for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+                  state.particles.push(new Particle(ball.x, ball.y, ball.color));
+                }
+              }
+
+              // Handle bomb ball - create secondary explosion
+              if (ball.type === 'bomb' && ball.bombRadius > 0) {
+                const bombBall = new Ball(ball.x, ball.y, true, {
+                  color: '#ff6600',
+                  radius: CONFIG.BASE_RADIUS,
+                  maxRadius: ball.bombRadius,
+                  type: 'normal'
+                });
+                state.balls.push(bombBall);
+                Audio.playPop(0.5);
+              }
+
+              Audio.playPop(0.8 + Math.random() * 0.4);
+              Haptic.pop();
             });
           }
 
@@ -1654,13 +2522,50 @@
           // Update ripples
           state.ripples = state.ripples.filter(r => r.update(dt));
 
-          // Check level end conditions
-          if (state.clicks > 0) {
+          // Update floating texts
+          state.floatingTexts = state.floatingTexts.filter(t => t.update(dt));
+
+          // Update confetti
+          state.confetti = state.confetti.filter(c => c.update(dt));
+
+          // Check level end conditions (not for zen or time attack)
+          if (state.gameMode !== 'zen' && state.gameMode !== 'timeAttack' && state.clicks > 0) {
             const anyActive = state.balls.some(ball => ball.isActive);
 
             if (!anyActive) {
-              if (state.numPopped >= state.target) {
+              // Check win/lose conditions
+              let won = false;
+              if (state.gameMode === 'precision') {
+                // Precision mode: must pop EXACTLY the target
+                won = state.numPopped === state.target;
+              } else {
+                won = state.numPopped >= state.target;
+              }
+
+              if (won) {
                 // Level complete
+                state.streak++;
+                if (state.streak > state.maxStreak) {
+                  state.maxStreak = state.streak;
+                }
+
+                // Calculate stars
+                state.stars = LevelSystem.calculateStars(state.numPopped, state.numballs);
+                state.levelStars[state.level] = Math.max(state.levelStars[state.level] || 0, state.stars);
+
+                // Update unlocks
+                if (state.level > state.unlocks.highestLevelReached) {
+                  state.unlocks.highestLevelReached = state.level;
+                  Storage.saveUnlocks(state.unlocks);
+                }
+                if (state.level > state.stats.highestLevel) {
+                  state.stats.highestLevel = state.level;
+                }
+
+                // Trigger slow-mo and confetti
+                this.triggerSlowMo(0.3, 1000);
+                this.spawnConfetti();
+
                 state.gameState = 'levelComplete';
                 Audio.playLevelUp();
                 Haptic.levelUp();
@@ -1670,8 +2575,13 @@
                   state.highScore = state.score;
                   Storage.saveHighScore(state.highScore);
                 }
+
+                // Save stats
+                Storage.saveStats(state.stats);
               } else {
                 // Game over
+                state.streak = 0;
+
                 state.gameState = 'gameOver';
                 Audio.playGameOver();
                 Haptic.gameOver();
@@ -1681,9 +2591,27 @@
                   state.highScore = state.score;
                   Storage.saveHighScore(state.highScore);
                 }
+
+                // Save stats
+                Storage.saveStats(state.stats);
               }
             }
           }
+        },
+
+        endTimeAttack() {
+          state.gameState = 'gameOver';
+          Audio.playGameOver();
+          Haptic.gameOver();
+
+          // Update high score
+          if (state.score > state.highScore) {
+            state.highScore = state.score;
+            Storage.saveHighScore(state.highScore);
+          }
+
+          // Save stats
+          Storage.saveStats(state.stats);
         },
 
         render() {
@@ -1691,15 +2619,37 @@
 
           ctx.clearRect(0, 0, state.width, state.height);
 
+          // Apply screen shake
+          if (state.screenShake.active) {
+            const elapsed = Date.now() - state.screenShake.startTime;
+            const progress = elapsed / state.screenShake.duration;
+            const intensity = state.screenShake.intensity * (1 - progress);
+            const shakeX = (Math.random() - 0.5) * intensity;
+            const shakeY = (Math.random() - 0.5) * intensity;
+            ctx.save();
+            ctx.translate(shakeX, shakeY);
+          }
+
           switch (state.gameState) {
+            case 'tutorial':
+              UI.drawTutorial(ctx);
+              break;
             case 'menu':
               UI.drawMenu(ctx);
+              break;
+            case 'modeSelect':
+              UI.drawModeSelect(ctx);
+              break;
+            case 'stats':
+              UI.drawStats(ctx);
               break;
             case 'playing':
               UI.drawBackground(ctx);
               state.ripples.forEach(r => r.draw(ctx));
               state.balls.forEach(ball => ball.draw(ctx));
               state.particles.forEach(p => p.draw(ctx));
+              state.floatingTexts.forEach(t => t.draw(ctx));
+              state.confetti.forEach(c => c.draw(ctx));
               UI.drawHUD(ctx);
               break;
             case 'paused':
@@ -1711,6 +2661,7 @@
             case 'levelComplete':
               UI.drawBackground(ctx);
               state.particles.forEach(p => p.draw(ctx));
+              state.confetti.forEach(c => c.draw(ctx));
               UI.drawLevelComplete(ctx);
               break;
             case 'upgradeSelect':
@@ -1727,6 +2678,11 @@
             case 'levelSelect':
               UI.drawLevelSelect(ctx);
               break;
+          }
+
+          // Restore from screen shake
+          if (state.screenShake.active) {
+            ctx.restore();
           }
         },
 
