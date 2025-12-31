@@ -126,6 +126,29 @@
         // Screen shake settings
         SCREEN_SHAKE_INTENSITY: 8,
         SCREEN_SHAKE_DURATION: 300,
+        // Time Attack explosions
+        TIME_ATTACK_MAX_EXPLOSIONS: 3,
+        TIME_ATTACK_COOLDOWN: 5000,
+        TIME_ATTACK_SPAWN_INTERVAL: 1000,
+        // Credits system
+        CREDITS_PER_SCORE: 0.1,
+        CREDITS_KEY: 'popemall_credits',
+        SHOP_KEY: 'popemall_shop',
+        // Ball color names for shop display
+        BALL_COLORS: {
+          '#ff006e': 'Pink', '#8338ec': 'Purple', '#3a86ff': 'Blue',
+          '#06ffa5': 'Mint', '#ffbe0b': 'Yellow', '#fb5607': 'Orange',
+          '#ff6b6b': 'Coral', '#ffd93d': 'Gold', '#ff8e3c': 'Tangerine',
+          '#d63384': 'Magenta', '#e85d04': 'Flame', '#ffb703': 'Amber',
+          '#00b4d8': 'Cyan', '#0077b6': 'Navy', '#48cae4': 'Sky',
+          '#90e0ef': 'Ice', '#00f5d4': 'Turquoise', '#7209b7': 'Violet',
+          '#80ed99': 'Lime', '#57cc99': 'Teal', '#38a3a5': 'Seafoam',
+          '#22577a': 'Marine', '#c7f9cc': 'Mint', '#b5e48c': 'Spring',
+          '#ff69b4': 'HotPink', '#dda0dd': 'Plum', '#98fb98': 'PaleGreen',
+          '#87ceeb': 'SkyBlue', '#ffd700': 'Gold', '#ff6347': 'Tomato',
+          '#9d4edd': 'Amethyst', '#c77dff': 'Lavender', '#e0aaff': 'Thistle',
+          '#7b2cbf': 'Grape', '#5a189a': 'Indigo', '#ff6d00': 'Blaze'
+        }
       };
 
       // ============================================
@@ -259,6 +282,20 @@
         // Time attack mode
         timeRemaining: 0,
         timeAttackScore: 0,
+        explosionsRemaining: 0,
+        lastExplosionTime: 0,
+        lastBallSpawnTime: 0,
+
+        // Credits and shop
+        credits: 0,
+        creditsEarned: 0,
+        shopUpgrades: {
+          colorUpgrades: {},
+          maxExplosions: 1,
+          explosionCooldownReduction: 0,
+          baseRadiusBonus: 0,
+          creditMultiplier: 1
+        },
 
         // Statistics (persistent)
         stats: {
@@ -267,7 +304,8 @@
           highestLevel: 0,
           gamesPlayed: 0,
           totalPlayTime: 0,
-          totalScore: 0
+          totalScore: 0,
+          totalCreditsEarned: 0
         },
 
         // Unlocks
@@ -297,7 +335,11 @@
         audioContext: null,
 
         // Touch
-        touchStartTime: 0
+        touchStartTime: 0,
+
+        // Shop UI state
+        shopTab: 'global',
+        selectedShopColor: null
       };
 
       // ============================================
@@ -330,6 +372,23 @@
 
           // Apply special type properties
           this.applySpecialType();
+
+          // Apply shop upgrades for this color
+          this.applyShopUpgrades();
+        }
+
+        applyShopUpgrades() {
+          const colorUpgrades = state.shopUpgrades.colorUpgrades[this.color] || {};
+
+          // Apply radius bonus
+          if (colorUpgrades.radiusBonus) {
+            this.maxRadius *= (1 + colorUpgrades.radiusBonus * 0.1);
+          }
+
+          // Apply speed bonus
+          if (colorUpgrades.speedBonus) {
+            this.speedMultiplier *= (1 + colorUpgrades.speedBonus * 0.15);
+          }
         }
 
         applySpecialType() {
@@ -926,6 +985,35 @@
           } catch (e) {
             return false;
           }
+        },
+
+        saveCredits(credits) {
+          try {
+            localStorage.setItem(CONFIG.CREDITS_KEY, credits.toString());
+          } catch (e) {}
+        },
+
+        loadCredits() {
+          try {
+            return parseInt(localStorage.getItem(CONFIG.CREDITS_KEY)) || 0;
+          } catch (e) {
+            return 0;
+          }
+        },
+
+        saveShopUpgrades(upgrades) {
+          try {
+            localStorage.setItem(CONFIG.SHOP_KEY, JSON.stringify(upgrades));
+          } catch (e) {}
+        },
+
+        loadShopUpgrades() {
+          try {
+            const saved = localStorage.getItem(CONFIG.SHOP_KEY);
+            return saved ? JSON.parse(saved) : null;
+          } catch (e) {
+            return null;
+          }
         }
       };
 
@@ -937,7 +1025,16 @@
           // Base count + bonus from upgrades
           const baseCount = CONFIG.BASE_BALL_COUNT + Math.floor((level - 1) / 5) * CONFIG.BALLS_PER_TIER;
           const withBonus = baseCount + state.upgrades.bonusBalls;
-          return Math.min(CONFIG.MAX_BALLS, withBonus);
+
+          // Add bonus balls from shop color upgrades
+          let colorBonusBalls = 0;
+          if (state.shopUpgrades.colorUpgrades) {
+            Object.values(state.shopUpgrades.colorUpgrades).forEach(upgrade => {
+              colorBonusBalls += upgrade.countBonus || 0;
+            });
+          }
+
+          return Math.min(CONFIG.MAX_BALLS, withBonus + colorBonusBalls);
         },
 
         calculateTarget(level, ballCount) {
@@ -951,7 +1048,13 @@
           // Base radius with percentage bonus from upgrades, minus penalty from extra balls
           const radiusPenalty = state.upgrades.bonusBalls * 0.03; // 3% penalty per bonus ball
           const effectiveBonus = state.upgrades.radiusBonus - radiusPenalty;
-          return Math.max(40, CONFIG.MAX_RADIUS * (1 + effectiveBonus));
+          let baseRadius = Math.max(40, CONFIG.MAX_RADIUS * (1 + effectiveBonus));
+
+          // Add permanent shop bonus
+          const shopBonus = state.shopUpgrades.baseRadiusBonus || 0;
+          baseRadius *= (1 + shopBonus * 0.05);
+
+          return baseRadius;
         },
 
         getMegaBallRadius() {
@@ -1003,6 +1106,204 @@
         isThemeUnlocked(themeKey) {
           const theme = THEMES[themeKey];
           return state.unlocks.highestLevelReached >= theme.unlockLevel;
+        },
+
+        getExplosionCooldown() {
+          const baseCooldown = CONFIG.TIME_ATTACK_COOLDOWN;
+          const reduction = state.shopUpgrades.explosionCooldownReduction || 0;
+          return baseCooldown * (1 - reduction * 0.1);
+        },
+
+        getMaxExplosions() {
+          return CONFIG.TIME_ATTACK_MAX_EXPLOSIONS + ((state.shopUpgrades.maxExplosions || 1) - 1);
+        }
+      };
+
+      // ============================================
+      // SHOP SYSTEM
+      // ============================================
+      const ShopSystem = {
+        UPGRADES: {
+          maxExplosions: {
+            name: 'Extra Explosions',
+            description: '+1 explosion in Time Attack',
+            baseCost: 500,
+            costMultiplier: 2,
+            maxLevel: 5,
+            icon: '💥'
+          },
+          explosionCooldownReduction: {
+            name: 'Quick Reload',
+            description: '-10% explosion cooldown',
+            baseCost: 300,
+            costMultiplier: 1.5,
+            maxLevel: 5,
+            icon: '⏱️'
+          },
+          baseRadiusBonus: {
+            name: 'Bigger Booms',
+            description: '+5% explosion radius',
+            baseCost: 200,
+            costMultiplier: 1.4,
+            maxLevel: 10,
+            icon: '🎯'
+          },
+          creditMultiplier: {
+            name: 'Money Maker',
+            description: '+25% credits earned',
+            baseCost: 1000,
+            costMultiplier: 2.5,
+            maxLevel: 4,
+            icon: '💰'
+          }
+        },
+
+        COLOR_UPGRADES: {
+          radiusBonus: {
+            name: 'Bigger',
+            description: '+10% radius',
+            baseCost: 150,
+            costMultiplier: 1.3,
+            maxLevel: 5,
+            icon: '⭕'
+          },
+          speedBonus: {
+            name: 'Faster',
+            description: '+15% speed',
+            baseCost: 100,
+            costMultiplier: 1.3,
+            maxLevel: 5,
+            icon: '⚡'
+          },
+          countBonus: {
+            name: 'More Balls',
+            description: '+1 ball per level',
+            baseCost: 300,
+            costMultiplier: 1.8,
+            maxLevel: 3,
+            icon: '🎱'
+          }
+        },
+
+        calculateCredits(score) {
+          const baseCredits = Math.floor(score * CONFIG.CREDITS_PER_SCORE);
+          const multiplier = state.shopUpgrades.creditMultiplier || 1;
+          return Math.floor(baseCredits * multiplier);
+        },
+
+        awardCredits(score) {
+          const creditsEarned = this.calculateCredits(score);
+          state.credits += creditsEarned;
+          state.creditsEarned = creditsEarned;
+          state.stats.totalCreditsEarned += creditsEarned;
+          Storage.saveCredits(state.credits);
+          Storage.saveStats(state.stats);
+          return creditsEarned;
+        },
+
+        getUpgradeCost(upgradeKey) {
+          const upgrade = this.UPGRADES[upgradeKey];
+          if (!upgrade) return Infinity;
+
+          const currentLevel = state.shopUpgrades[upgradeKey] || (upgradeKey === 'maxExplosions' ? 1 : 0);
+          if (currentLevel >= upgrade.maxLevel) return Infinity;
+
+          return Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, currentLevel));
+        },
+
+        getColorUpgradeCost(color, upgradeType) {
+          const upgrade = this.COLOR_UPGRADES[upgradeType];
+          if (!upgrade) return Infinity;
+
+          const colorUpgrades = state.shopUpgrades.colorUpgrades[color] || {};
+          const currentLevel = colorUpgrades[upgradeType] || 0;
+          if (currentLevel >= upgrade.maxLevel) return Infinity;
+
+          return Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, currentLevel));
+        },
+
+        purchaseUpgrade(upgradeKey) {
+          const cost = this.getUpgradeCost(upgradeKey);
+          if (cost === Infinity || state.credits < cost) {
+            return false;
+          }
+
+          state.credits -= cost;
+          if (upgradeKey === 'maxExplosions' && !state.shopUpgrades[upgradeKey]) {
+            state.shopUpgrades[upgradeKey] = 2;
+          } else if (upgradeKey === 'creditMultiplier' && !state.shopUpgrades[upgradeKey]) {
+            state.shopUpgrades[upgradeKey] = 1.25;
+          } else if (upgradeKey === 'creditMultiplier') {
+            state.shopUpgrades[upgradeKey] += 0.25;
+          } else {
+            state.shopUpgrades[upgradeKey] = (state.shopUpgrades[upgradeKey] || 0) + 1;
+          }
+
+          Storage.saveCredits(state.credits);
+          Storage.saveShopUpgrades(state.shopUpgrades);
+          return true;
+        },
+
+        purchaseColorUpgrade(color, upgradeType) {
+          const cost = this.getColorUpgradeCost(color, upgradeType);
+          if (cost === Infinity || state.credits < cost) {
+            return false;
+          }
+
+          state.credits -= cost;
+
+          if (!state.shopUpgrades.colorUpgrades[color]) {
+            state.shopUpgrades.colorUpgrades[color] = {};
+          }
+
+          state.shopUpgrades.colorUpgrades[color][upgradeType] =
+            (state.shopUpgrades.colorUpgrades[color][upgradeType] || 0) + 1;
+
+          Storage.saveCredits(state.credits);
+          Storage.saveShopUpgrades(state.shopUpgrades);
+          return true;
+        },
+
+        getUpgradeLevel(upgradeKey) {
+          if (upgradeKey === 'maxExplosions') {
+            return state.shopUpgrades[upgradeKey] || 1;
+          }
+          if (upgradeKey === 'creditMultiplier') {
+            return Math.round(((state.shopUpgrades[upgradeKey] || 1) - 1) * 4);
+          }
+          return state.shopUpgrades[upgradeKey] || 0;
+        },
+
+        getColorUpgradeLevel(color, upgradeType) {
+          const colorUpgrades = state.shopUpgrades.colorUpgrades[color] || {};
+          return colorUpgrades[upgradeType] || 0;
+        },
+
+        getUpgradeableColors() {
+          const theme = THEMES[state.settings.theme];
+          return theme.ballColors;
+        },
+
+        getColorName(colorHex) {
+          return CONFIG.BALL_COLORS[colorHex] || colorHex;
+        },
+
+        initDefaults() {
+          if (!state.shopUpgrades.colorUpgrades) {
+            state.shopUpgrades.colorUpgrades = {};
+          }
+          if (!state.shopUpgrades.maxExplosions) {
+            state.shopUpgrades.maxExplosions = 1;
+          }
+          if (!state.shopUpgrades.explosionCooldownReduction) {
+            state.shopUpgrades.explosionCooldownReduction = 0;
+          }
+          if (!state.shopUpgrades.baseRadiusBonus) {
+            state.shopUpgrades.baseRadiusBonus = 0;
+          }
+          if (!state.shopUpgrades.creditMultiplier) {
+            state.shopUpgrades.creditMultiplier = 1;
+          }
         }
       };
 
@@ -1062,6 +1363,25 @@
             ctx.font = `${fontSize * 0.7}px 'Segoe UI', sans-serif`;
             ctx.fillStyle = timeLeft < 10 ? '#ff4444' : theme.textColor;
             ctx.fillText(`Time: ${timeLeft}s`, padding, padding + fontSize + 5);
+
+            // Show explosions remaining and cooldown
+            const now = Date.now();
+            const cooldown = LevelSystem.getExplosionCooldown();
+            const timeSinceLastExplosion = now - state.lastExplosionTime;
+            const canExplode = state.explosionsRemaining > 0 && timeSinceLastExplosion >= cooldown;
+            const cooldownRemaining = Math.max(0, cooldown - timeSinceLastExplosion);
+
+            ctx.font = `${fontSize * 0.6}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = state.explosionsRemaining > 0 ? '#80ed99' : '#ff6b6b';
+            ctx.fillText(`💥 ${state.explosionsRemaining}`, padding, padding + fontSize * 2 + 10);
+
+            if (cooldownRemaining > 0 && state.explosionsRemaining > 0) {
+              ctx.fillStyle = '#ffbe0b';
+              ctx.fillText(`⏱️ ${(cooldownRemaining / 1000).toFixed(1)}s`, padding + 50, padding + fontSize * 2 + 10);
+            } else if (canExplode) {
+              ctx.fillStyle = '#80ed99';
+              ctx.fillText('TAP!', padding + 50, padding + fontSize * 2 + 10);
+            }
           } else if (state.gameMode === 'zen') {
             ctx.fillText('ZEN MODE', padding, padding);
             ctx.font = `${fontSize * 0.7}px 'Segoe UI', sans-serif`;
@@ -1169,14 +1489,20 @@
             ctx.fillText(`Best Streak: ${state.maxStreak}`, state.width / 2, state.height * 0.27);
           }
 
-          // Buttons - 2 columns for more options
-          const btnY = state.height * 0.38;
-          const btnSpacing = state.height * 0.12;
+          // Credits display
+          ctx.font = `bold ${subtitleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = '#ffd700';
+          ctx.fillText(`💰 ${state.credits.toLocaleString()} credits`, state.width / 2, state.height * 0.32);
+
+          // Buttons
+          const btnY = state.height * 0.40;
+          const btnSpacing = state.height * 0.10;
           this.drawButton(ctx, state.width / 2, btnY, 'Play', 'play');
           this.drawButton(ctx, state.width / 2, btnY + btnSpacing, 'Game Modes', 'modeSelect');
-          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 2, 'Level Select', 'levelSelect');
-          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 3, 'Statistics', 'stats');
-          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 4, 'Settings', 'settings');
+          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 2, 'Shop', 'shop');
+          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 3, 'Level Select', 'levelSelect');
+          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 4, 'Statistics', 'stats');
+          this.drawButton(ctx, state.width / 2, btnY + btnSpacing * 5, 'Settings', 'settings');
 
           // Theme indicator
           ctx.font = `${subtitleSize * 0.8}px 'Segoe UI', sans-serif`;
@@ -1475,23 +1801,39 @@
           const titleSize = Math.min(50, state.height * 0.1);
           ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
           ctx.fillStyle = '#ff6b6b';
-          ctx.fillText('GAME OVER', state.width / 2, state.height * 0.2);
+          ctx.fillText('GAME OVER', state.width / 2, state.height * 0.15);
 
           // Stats
           const statsSize = titleSize * 0.5;
           ctx.font = `${statsSize}px 'Segoe UI', sans-serif`;
           ctx.fillStyle = theme.textColor;
-          ctx.fillText(`Reached Level: ${state.level}`, state.width / 2, state.height * 0.33);
-          ctx.fillText(`Final Score: ${state.score}`, state.width / 2, state.height * 0.41);
+          if (state.gameMode === 'timeAttack') {
+            ctx.fillText(`Final Score: ${state.score}`, state.width / 2, state.height * 0.28);
+          } else {
+            ctx.fillText(`Reached Level: ${state.level}`, state.width / 2, state.height * 0.28);
+            ctx.fillText(`Final Score: ${state.score}`, state.width / 2, state.height * 0.36);
+          }
+
+          // Credits earned
+          if (state.creditsEarned > 0) {
+            ctx.font = `bold ${statsSize}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = '#ffd700';
+            ctx.fillText(`💰 +${state.creditsEarned} credits earned!`, state.width / 2, state.height * 0.46);
+
+            ctx.font = `${statsSize * 0.7}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = theme.textColor;
+            ctx.fillText(`Total: ${state.credits.toLocaleString()} credits`, state.width / 2, state.height * 0.53);
+          }
 
           if (state.score >= state.highScore && state.score > 0) {
+            ctx.font = `bold ${statsSize}px 'Segoe UI', sans-serif`;
             ctx.fillStyle = theme.ballColors[0];
-            ctx.fillText('NEW HIGH SCORE!', state.width / 2, state.height * 0.49);
+            ctx.fillText('NEW HIGH SCORE!', state.width / 2, state.height * 0.62);
           }
 
           // Buttons
-          this.drawButton(ctx, state.width / 2, state.height * 0.65, 'Try Again', 'restart');
-          this.drawButton(ctx, state.width / 2, state.height * 0.78, 'Main Menu', 'mainMenu');
+          this.drawButton(ctx, state.width / 2, state.height * 0.74, 'Try Again', 'restart');
+          this.drawButton(ctx, state.width / 2, state.height * 0.86, 'Main Menu', 'mainMenu');
 
           ctx.restore();
         },
@@ -1875,6 +2217,239 @@
           this.drawButton(ctx, state.width / 2, state.height * 0.92, "Let's Play!", 'startFromTutorial');
 
           ctx.restore();
+        },
+
+        drawShop(ctx) {
+          this.drawBackground(ctx);
+
+          const theme = THEMES[state.settings.theme];
+
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Title
+          const titleSize = Math.min(40, state.height * 0.08);
+          ctx.font = `bold ${titleSize}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = theme.textColor;
+          ctx.fillText('Shop', state.width / 2, state.height * 0.08);
+
+          // Credits display
+          ctx.font = `bold ${titleSize * 0.6}px 'Segoe UI', sans-serif`;
+          ctx.fillStyle = '#ffd700';
+          ctx.fillText(`💰 ${state.credits.toLocaleString()} credits`, state.width / 2, state.height * 0.14);
+
+          // Tabs for global vs color upgrades
+          const tabWidth = Math.min(150, state.width * 0.18);
+          const tabHeight = 35;
+          const tabY = state.height * 0.18;
+
+          // Global tab
+          if (!state.buttons) state.buttons = {};
+          state.buttons['tab_global'] = { x: state.width / 2 - tabWidth - 10, y: tabY, width: tabWidth, height: tabHeight };
+          ctx.fillStyle = state.shopTab === 'color' ? theme.uiBackground : theme.buttonGradient[0];
+          ctx.beginPath();
+          ctx.roundRect(state.width / 2 - tabWidth - 10, tabY, tabWidth, tabHeight, 8);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `bold ${tabHeight * 0.4}px 'Segoe UI', sans-serif`;
+          ctx.fillText('Global', state.width / 2 - tabWidth / 2 - 10, tabY + tabHeight / 2);
+
+          // Color tab
+          state.buttons['tab_color'] = { x: state.width / 2 + 10, y: tabY, width: tabWidth, height: tabHeight };
+          ctx.fillStyle = state.shopTab === 'color' ? theme.buttonGradient[0] : theme.uiBackground;
+          ctx.beginPath();
+          ctx.roundRect(state.width / 2 + 10, tabY, tabWidth, tabHeight, 8);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText('Colors', state.width / 2 + tabWidth / 2 + 10, tabY + tabHeight / 2);
+
+          if (state.shopTab === 'color') {
+            this.drawColorUpgrades(ctx);
+          } else {
+            this.drawGlobalUpgrades(ctx);
+          }
+
+          // Back button
+          this.drawButton(ctx, state.width / 2, state.height * 0.92, 'Back', 'back');
+
+          ctx.restore();
+        },
+
+        drawGlobalUpgrades(ctx) {
+          const theme = THEMES[state.settings.theme];
+          const cardWidth = Math.min(180, state.width * 0.22);
+          const cardHeight = Math.min(160, state.height * 0.35);
+          const cardSpacing = Math.min(20, state.width * 0.02);
+          const upgrades = Object.entries(ShopSystem.UPGRADES);
+
+          const totalWidth = cardWidth * upgrades.length + cardSpacing * (upgrades.length - 1);
+          const startX = (state.width - totalWidth) / 2;
+          const cardY = state.height * 0.28;
+
+          upgrades.forEach(([key, upgrade], i) => {
+            const x = startX + i * (cardWidth + cardSpacing);
+            const level = ShopSystem.getUpgradeLevel(key);
+            const cost = ShopSystem.getUpgradeCost(key);
+            const maxed = cost === Infinity;
+            const canAfford = state.credits >= cost;
+
+            if (!state.buttons) state.buttons = {};
+            state.buttons[`shop_${key}`] = { x, y: cardY, width: cardWidth, height: cardHeight };
+
+            // Card background
+            ctx.fillStyle = theme.uiBackground;
+            ctx.beginPath();
+            ctx.roundRect(x, cardY, cardWidth, cardHeight, 12);
+            ctx.fill();
+
+            // Card border
+            ctx.strokeStyle = maxed ? '#ffd700' : (canAfford ? theme.uiBorder : 'rgba(100, 100, 100, 0.5)');
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            const centerX = x + cardWidth / 2;
+
+            // Icon
+            ctx.font = `${cardHeight * 0.2}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(upgrade.icon, centerX, cardY + cardHeight * 0.15);
+
+            // Name
+            ctx.font = `bold ${cardHeight * 0.1}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = theme.textColor;
+            ctx.fillText(upgrade.name, centerX, cardY + cardHeight * 0.35);
+
+            // Description
+            ctx.font = `${cardHeight * 0.07}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.7)`;
+            ctx.fillText(upgrade.description, centerX, cardY + cardHeight * 0.48);
+
+            // Level
+            ctx.font = `${cardHeight * 0.08}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = '#80ed99';
+            ctx.fillText(`Level ${level}/${upgrade.maxLevel}`, centerX, cardY + cardHeight * 0.62);
+
+            // Cost or Max
+            if (maxed) {
+              ctx.font = `bold ${cardHeight * 0.1}px 'Segoe UI', sans-serif`;
+              ctx.fillStyle = '#ffd700';
+              ctx.fillText('MAXED', centerX, cardY + cardHeight * 0.80);
+            } else {
+              ctx.font = `bold ${cardHeight * 0.09}px 'Segoe UI', sans-serif`;
+              ctx.fillStyle = canAfford ? '#80ed99' : '#ff6b6b';
+              ctx.fillText(`💰 ${cost}`, centerX, cardY + cardHeight * 0.80);
+
+              if (canAfford) {
+                ctx.font = `${cardHeight * 0.07}px 'Segoe UI', sans-serif`;
+                ctx.fillStyle = theme.textColor;
+                ctx.fillText('TAP TO BUY', centerX, cardY + cardHeight * 0.92);
+              }
+            }
+          });
+        },
+
+        drawColorUpgrades(ctx) {
+          const theme = THEMES[state.settings.theme];
+          const colors = ShopSystem.getUpgradeableColors();
+          const colorSize = Math.min(50, state.width / (colors.length + 2));
+          const colorY = state.height * 0.30;
+          const colorStartX = (state.width - colors.length * (colorSize + 10)) / 2 + colorSize / 2;
+
+          // Draw color selection
+          colors.forEach((color, i) => {
+            const x = colorStartX + i * (colorSize + 10);
+
+            if (!state.buttons) state.buttons = {};
+            state.buttons[`color_${color}`] = { x: x - colorSize / 2, y: colorY - colorSize / 2, width: colorSize, height: colorSize };
+
+            const isSelected = state.selectedShopColor === color;
+
+            ctx.beginPath();
+            ctx.arc(x, colorY, colorSize / 2, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            if (isSelected) {
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 3;
+              ctx.stroke();
+            }
+          });
+
+          // Draw color name
+          if (state.selectedShopColor) {
+            ctx.font = `bold ${colorSize * 0.4}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = state.selectedShopColor;
+            ctx.textAlign = 'center';
+            ctx.fillText(ShopSystem.getColorName(state.selectedShopColor), state.width / 2, colorY + colorSize + 10);
+
+            // Draw upgrade options for selected color
+            const upgradeTypes = Object.entries(ShopSystem.COLOR_UPGRADES);
+            const cardWidth = Math.min(160, state.width * 0.2);
+            const cardHeight = Math.min(130, state.height * 0.28);
+            const cardSpacing = Math.min(20, state.width * 0.02);
+            const totalWidth = cardWidth * upgradeTypes.length + cardSpacing * (upgradeTypes.length - 1);
+            const startX = (state.width - totalWidth) / 2;
+            const cardY = state.height * 0.48;
+
+            upgradeTypes.forEach(([type, upgrade], i) => {
+              const x = startX + i * (cardWidth + cardSpacing);
+              const level = ShopSystem.getColorUpgradeLevel(state.selectedShopColor, type);
+              const cost = ShopSystem.getColorUpgradeCost(state.selectedShopColor, type);
+              const maxed = cost === Infinity;
+              const canAfford = state.credits >= cost;
+
+              state.buttons[`colorup_${type}`] = { x, y: cardY, width: cardWidth, height: cardHeight };
+
+              // Card background
+              ctx.fillStyle = theme.uiBackground;
+              ctx.beginPath();
+              ctx.roundRect(x, cardY, cardWidth, cardHeight, 10);
+              ctx.fill();
+
+              ctx.strokeStyle = maxed ? '#ffd700' : (canAfford ? state.selectedShopColor : 'rgba(100, 100, 100, 0.5)');
+              ctx.lineWidth = 2;
+              ctx.stroke();
+
+              const centerX = x + cardWidth / 2;
+
+              // Icon
+              ctx.font = `${cardHeight * 0.2}px sans-serif`;
+              ctx.textAlign = 'center';
+              ctx.fillText(upgrade.icon, centerX, cardY + cardHeight * 0.18);
+
+              // Name
+              ctx.font = `bold ${cardHeight * 0.12}px 'Segoe UI', sans-serif`;
+              ctx.fillStyle = theme.textColor;
+              ctx.fillText(upgrade.name, centerX, cardY + cardHeight * 0.38);
+
+              // Description
+              ctx.font = `${cardHeight * 0.09}px 'Segoe UI', sans-serif`;
+              ctx.fillStyle = `rgba(${theme.textColor === '#ffffff' ? '255,255,255' : '0,0,0'}, 0.7)`;
+              ctx.fillText(upgrade.description, centerX, cardY + cardHeight * 0.52);
+
+              // Level
+              ctx.fillStyle = '#80ed99';
+              ctx.fillText(`Lv ${level}/${upgrade.maxLevel}`, centerX, cardY + cardHeight * 0.66);
+
+              // Cost
+              if (maxed) {
+                ctx.font = `bold ${cardHeight * 0.1}px 'Segoe UI', sans-serif`;
+                ctx.fillStyle = '#ffd700';
+                ctx.fillText('MAX', centerX, cardY + cardHeight * 0.82);
+              } else {
+                ctx.fillStyle = canAfford ? '#80ed99' : '#ff6b6b';
+                ctx.fillText(`💰 ${cost}`, centerX, cardY + cardHeight * 0.82);
+              }
+            });
+          } else {
+            ctx.font = `${colorSize * 0.4}px 'Segoe UI', sans-serif`;
+            ctx.fillStyle = theme.textColor;
+            ctx.textAlign = 'center';
+            ctx.fillText('Select a color to upgrade', state.width / 2, colorY + colorSize + 20);
+          }
         }
       };
 
@@ -1904,6 +2479,14 @@
           if (savedUnlocks) {
             state.unlocks = { ...state.unlocks, ...savedUnlocks };
           }
+
+          // Load credits and shop upgrades
+          state.credits = Storage.loadCredits();
+          const savedShopUpgrades = Storage.loadShopUpgrades();
+          if (savedShopUpgrades) {
+            state.shopUpgrades = { ...state.shopUpgrades, ...savedShopUpgrades };
+          }
+          ShopSystem.initDefaults();
 
           // Check if tutorial has been seen
           state.tutorialSeen = Storage.loadTutorialSeen();
@@ -2006,6 +2589,10 @@
               this.startGame(1);
             } else if (this.isButtonClick('modeSelect', x, y)) {
               state.gameState = 'modeSelect';
+            } else if (this.isButtonClick('shop', x, y)) {
+              state.shopTab = 'global';
+              state.selectedShopColor = null;
+              state.gameState = 'shop';
             } else if (this.isButtonClick('levelSelect', x, y)) {
               state.gameState = 'levelSelect';
             } else if (this.isButtonClick('stats', x, y)) {
@@ -2073,6 +2660,8 @@
             this.handleSettingsClick(x, y);
           } else if (state.gameState === 'levelSelect') {
             this.handleLevelSelectClick(x, y);
+          } else if (state.gameState === 'shop') {
+            this.handleShopClick(x, y);
           }
         },
 
@@ -2084,13 +2673,29 @@
         },
 
         handleGameClick(x, y) {
-          if (state.clicks >= 1) return;
+          // Time Attack mode uses explosion system
+          if (state.gameMode === 'timeAttack') {
+            const now = Date.now();
+            const cooldown = LevelSystem.getExplosionCooldown();
+            const timeSinceLastExplosion = now - state.lastExplosionTime;
 
-          state.clicks++;
+            // Check if we can explode
+            if (state.explosionsRemaining <= 0 || timeSinceLastExplosion < cooldown) {
+              return;
+            }
+
+            state.explosionsRemaining--;
+            state.lastExplosionTime = now;
+          } else {
+            // Classic mode - only one click
+            if (state.clicks >= 1) return;
+            state.clicks++;
+          }
+
           Audio.resume();
 
-          // Determine if using mega ball
-          const useMegaBall = state.upgrades.megaBallAvailable;
+          // Determine if using mega ball (not in time attack)
+          const useMegaBall = state.gameMode !== 'timeAttack' && state.upgrades.megaBallAvailable;
           if (useMegaBall) {
             state.upgrades.megaBallAvailable = false;
           }
@@ -2203,6 +2808,60 @@
           }
         },
 
+        handleShopClick(x, y) {
+          if (this.isButtonClick('back', x, y)) {
+            state.gameState = 'menu';
+            return;
+          }
+
+          // Tab switching
+          if (this.isButtonClick('tab_global', x, y)) {
+            state.shopTab = 'global';
+            state.selectedShopColor = null;
+            return;
+          }
+          if (this.isButtonClick('tab_color', x, y)) {
+            state.shopTab = 'color';
+            return;
+          }
+
+          if (state.shopTab === 'global') {
+            // Check global upgrade purchases
+            Object.keys(ShopSystem.UPGRADES).forEach(key => {
+              if (this.isButtonClick(`shop_${key}`, x, y)) {
+                if (ShopSystem.purchaseUpgrade(key)) {
+                  Audio.playPop(1.5);
+                  Haptic.combo();
+                } else {
+                  Haptic.pop();
+                }
+              }
+            });
+          } else {
+            // Check color selection
+            const colors = ShopSystem.getUpgradeableColors();
+            colors.forEach(color => {
+              if (this.isButtonClick(`color_${color}`, x, y)) {
+                state.selectedShopColor = color;
+              }
+            });
+
+            // Check color upgrade purchases
+            if (state.selectedShopColor) {
+              Object.keys(ShopSystem.COLOR_UPGRADES).forEach(type => {
+                if (this.isButtonClick(`colorup_${type}`, x, y)) {
+                  if (ShopSystem.purchaseColorUpgrade(state.selectedShopColor, type)) {
+                    Audio.playPop(1.5);
+                    Haptic.combo();
+                  } else {
+                    Haptic.pop();
+                  }
+                }
+              });
+            }
+          }
+        },
+
         startGame(level) {
           state.level = level;
           state.clicks = 0;
@@ -2288,6 +2947,11 @@
           state.timeRemaining = CONFIG.TIME_ATTACK_DURATION;
           state.timeAttackScore = 0;
 
+          // Initialize explosions with cooldown
+          state.explosionsRemaining = LevelSystem.getMaxExplosions();
+          state.lastExplosionTime = 0;
+          state.lastBallSpawnTime = Date.now();
+
           state.screenShake = { active: false, intensity: 0, duration: 0, startTime: 0 };
           state.slowMo = { active: false, factor: 1, duration: 0, startTime: 0 };
 
@@ -2320,6 +2984,23 @@
             });
             state.balls.push(ball);
           }
+        },
+
+        spawnSingleTimeAttackBall() {
+          const theme = THEMES[state.settings.theme];
+          const x = CONFIG.BASE_RADIUS + Math.random() * (state.width - 2 * CONFIG.BASE_RADIUS);
+          const y = CONFIG.BASE_RADIUS + Math.random() * (state.height - 2 * CONFIG.BASE_RADIUS);
+          const color = theme.ballColors[Math.floor(Math.random() * theme.ballColors.length)];
+
+          const isSpecial = Math.random() < 0.15;
+          const ballType = isSpecial ? LevelSystem.getRandomSpecialType() : 'normal';
+
+          const ball = new Ball(x, y, false, {
+            color,
+            type: ballType,
+            speedMultiplier: 1.2
+          });
+          state.balls.push(ball);
         },
 
         startZenMode() {
@@ -2417,7 +3098,15 @@
               this.endTimeAttack();
               return;
             }
-            // Respawn balls in time attack
+
+            // Spawn a new ball every 1 second
+            const now = Date.now();
+            if (now - state.lastBallSpawnTime >= CONFIG.TIME_ATTACK_SPAWN_INTERVAL) {
+              state.lastBallSpawnTime = now;
+              this.spawnSingleTimeAttackBall();
+            }
+
+            // Respawn balls if too few (fallback)
             this.spawnTimeAttackBalls();
           }
 
@@ -2582,6 +3271,9 @@
                 // Game over
                 state.streak = 0;
 
+                // Award credits based on score
+                ShopSystem.awardCredits(state.score);
+
                 state.gameState = 'gameOver';
                 Audio.playGameOver();
                 Haptic.gameOver();
@@ -2600,6 +3292,9 @@
         },
 
         endTimeAttack() {
+          // Award credits based on score
+          ShopSystem.awardCredits(state.score);
+
           state.gameState = 'gameOver';
           Audio.playGameOver();
           Haptic.gameOver();
@@ -2674,6 +3369,9 @@
               break;
             case 'settings':
               UI.drawSettings(ctx);
+              break;
+            case 'shop':
+              UI.drawShop(ctx);
               break;
             case 'levelSelect':
               UI.drawLevelSelect(ctx);
