@@ -379,6 +379,12 @@
   let curMaxR = MAX_R, curSpeedMul = 1, curHoldMul = 1, curMagnet = false;
   let boosts = { extraPops: 0, megaBlast: 0, slowMo: 0, sticky: 0, magnet: 0 };
 
+  // Difficulty that scales with level.
+  let walls = [];            // obstacle bars: { x, y, w, h, base, move }
+  let levelSpeedScale = 1;   // ball speed multiplier from level
+  let holdLevelMul = 1;      // pop hold-time multiplier from level
+  const WALL_T = 16;         // wall thickness
+
   const POWERUPS = [
     { id: "extraPops", icon: "💥", name: "Extra Pop", desc: "+1 pop to deploy", cost: 6, max: 3 },
     { id: "megaBlast", icon: "🟣", name: "Mega Blast", desc: "+30% pop size", cost: 7, max: 3 },
@@ -400,8 +406,89 @@
 
   function rand(a, b) { return a + Math.random() * (b - a); }
 
+  // Obstacle layouts grow with level. Bars never seal a region: the central
+  // cross has corner gaps, so balls always circulate. Some bars oscillate.
+  function bar(x, y, w, h, move) { return { x, y, w, h, base: { x, y }, move: move || null }; }
+  function generateWalls(lv) {
+    if (lv < 6) return [];                     // levels 1-5 stay open
+    const T = WALL_T;
+    const tpl = [
+      bar(W / 2 - T / 2, 140, T, 320),         // vertical center (gaps top/bottom)
+      bar(180, H / 2 - T / 2, W - 360, T),     // horizontal center (gaps left/right)
+      bar(200 - T / 2, 0, T, 210),             // upper-left stub
+      bar(600 - T / 2, H - 210, T, 210),       // lower-right stub
+      bar(380, 160 - T / 2, W - 380, T),       // right shelf
+      bar(0, 440 - T / 2, 420, T),             // left shelf
+    ];
+    const count = Math.min(tpl.length, Math.floor((lv - 6) / 3) + 1);
+    const out = tpl.slice(0, count);
+    if (lv >= 12 && out[0]) out[0].move = { axis: "x", amp: 130, speed: 0.7, phase: 0 };
+    if (lv >= 18 && out[1]) out[1].move = { axis: "y", amp: 90, speed: 0.9, phase: 1.5 };
+    return out;
+  }
+
+  function pointInWall(x, y, pad) {
+    pad = pad || 0;
+    for (const w of walls) {
+      if (x >= w.x - pad && x <= w.x + w.w + pad && y >= w.y - pad && y <= w.y + w.h + pad) return w;
+    }
+    return null;
+  }
+  // Nudge a point out of any wall it lands in (used for pop placement).
+  function pushOutOfWalls(x, y) {
+    for (const w of walls) {
+      if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) {
+        const dl = x - w.x, dr = w.x + w.w - x, dt = y - w.y, db = w.y + w.h - y;
+        const m = Math.min(dl, dr, dt, db);
+        if (m === dl) x = w.x - 2; else if (m === dr) x = w.x + w.w + 2;
+        else if (m === dt) y = w.y - 2; else y = w.y + w.h + 2;
+      }
+    }
+    return { x: Math.max(BASE_R, Math.min(W - BASE_R, x)), y: Math.max(BASE_R, Math.min(H - BASE_R, y)) };
+  }
+  // Circle-vs-rect collision with reflection, for floating balls.
+  function collideWall(b, w) {
+    const left = w.x, right = w.x + w.w, top = w.y, bottom = w.y + w.h;
+    if (b.x >= left && b.x <= right && b.y >= top && b.y <= bottom) {
+      const dl = b.x - left, dr = right - b.x, dt = b.y - top, db = bottom - b.y;
+      const m = Math.min(dl, dr, dt, db);
+      if (m === dl) { b.x = left - b.r; b.vx = -Math.abs(b.vx); }
+      else if (m === dr) { b.x = right + b.r; b.vx = Math.abs(b.vx); }
+      else if (m === dt) { b.y = top - b.r; b.vy = -Math.abs(b.vy); }
+      else { b.y = bottom + b.r; b.vy = Math.abs(b.vy); }
+      return;
+    }
+    const cx = Math.max(left, Math.min(b.x, right)), cy = Math.max(top, Math.min(b.y, bottom));
+    const dx = b.x - cx, dy = b.y - cy, d2 = dx * dx + dy * dy;
+    if (d2 >= b.r * b.r) return;
+    const d = Math.sqrt(d2) || 0.0001, nx = dx / d, ny = dy / d, overlap = b.r - d;
+    b.x += nx * overlap; b.y += ny * overlap;
+    const vn = b.vx * nx + b.vy * ny;
+    if (vn < 0) { b.vx -= 2 * vn * nx; b.vy -= 2 * vn * ny; }
+  }
+  // Liang-Barsky: does segment (x1,y1)-(x2,y2) cross rect w?
+  function segHitsRect(x1, y1, x2, y2, w) {
+    let t0 = 0, t1 = 1;
+    const dx = x2 - x1, dy = y2 - y1;
+    const p = [-dx, dx, -dy, dy];
+    const q = [x1 - w.x, (w.x + w.w) - x1, y1 - w.y, (w.y + w.h) - y1];
+    for (let i = 0; i < 4; i++) {
+      if (p[i] === 0) { if (q[i] < 0) return false; }
+      else {
+        const r = q[i] / p[i];
+        if (p[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+        else { if (r < t0) return false; if (r < t1) t1 = r; }
+      }
+    }
+    return true;
+  }
+  function losBlocked(x1, y1, x2, y2) {
+    for (const w of walls) if (segHitsRect(x1, y1, x2, y2, w)) return true;
+    return false;
+  }
+
   function Ball(x, y, popped) {
-    const speed = rand(55, 95);
+    const speed = rand(55, 95) * levelSpeedScale;
     const ang = rand(0, Math.PI * 2);
     return {
       x, y,
@@ -425,13 +512,25 @@
     curMagnet = boosts.magnet > 0;
     boosts = { extraPops: 0, megaBlast: 0, slowMo: 0, sticky: 0, magnet: 0 };
 
+    // Level-driven difficulty ramps in from level 6 so early levels stay as-is;
+    // the mid/late game is where powerups would otherwise trivialize things.
+    const d = Math.max(0, lv - 5);
+    levelSpeedScale = 1 + Math.min(1.0, d * 0.05);
+    holdLevelMul = Math.max(0.65, 1 - d * 0.02);
+    walls = generateWalls(lv);
+
     const cfg = levelConfig(lv);
     target = cfg.target;
     poppedCount = 0;
     chain = 0;
     balls = []; particles = []; floaters = [];
     for (let i = 0; i < cfg.balls; i++) {
-      balls.push(Ball(rand(BASE_R + 6, W - BASE_R - 6), rand(BASE_R + 6, H - BASE_R - 6), false));
+      let x, y, tries = 0;
+      do {
+        x = rand(BASE_R + 6, W - BASE_R - 6);
+        y = rand(BASE_R + 6, H - BASE_R - 6);
+      } while (pointInWall(x, y, BASE_R + 4) && ++tries < 30);
+      balls.push(Ball(x, y, false));
     }
     state = STATE.AIM;
     pulse = 0;
@@ -458,24 +557,29 @@
   function addFloater(x, y, text, color) { floaters.push({ x, y, text, color: color || "#fff", life: 1 }); }
 
   // ----- Shop -----------------------------------------------------------------
+  // Cost rises with each copy bought this level, so maxing out is expensive.
+  function powerupCost(p) { return p.cost * (boosts[p.id] + 1); }
   function renderShop() {
     shopCoinsEl.textContent = coins;
     shopGrid.innerHTML = "";
     for (const p of POWERUPS) {
       const owned = boosts[p.id];
-      const affordable = coins >= p.cost && owned < p.max;
+      const maxed = owned >= p.max;
+      const cost = powerupCost(p);
+      const affordable = coins >= cost && !maxed;
       const card = document.createElement("div");
       card.className = "card" + (affordable ? "" : " disabled");
       card.innerHTML =
         '<div class="ic">' + p.icon + '</div>' +
         '<div class="nm">' + p.name + '</div>' +
         '<div class="ds">' + p.desc + '</div>' +
-        '<div class="cost">🪙 ' + p.cost + '</div>' +
-        '<div class="owned">' + (owned > 0 ? "Equipped ×" + owned : (owned >= p.max ? "" : "")) + '</div>';
+        '<div class="cost">' + (maxed ? "MAX" : "🪙 " + cost) + '</div>' +
+        '<div class="owned">' + (owned > 0 ? "×" + owned + " equipped" : "") + '</div>';
       if (affordable) {
         card.addEventListener("click", () => {
-          if (coins < p.cost || boosts[p.id] >= p.max) return;
-          coins -= p.cost;
+          const c = powerupCost(p);
+          if (coins < c || boosts[p.id] >= p.max) return;
+          coins -= c;
           boosts[p.id] += 1;
           sfx.buy();
           updateHud();
@@ -507,9 +611,10 @@
     e.preventDefault();
     ensureAudio();
     if ((state === STATE.AIM || state === STATE.REACT) && popsRemaining > 0) {
-      const { x, y } = pointerPos(e);
-      const b = Ball(Math.max(BASE_R, Math.min(W - BASE_R, x)),
-                     Math.max(BASE_R, Math.min(H - BASE_R, y)), true);
+      const raw = pointerPos(e);
+      const pos = pushOutOfWalls(Math.max(BASE_R, Math.min(W - BASE_R, raw.x)),
+                                 Math.max(BASE_R, Math.min(H - BASE_R, raw.y)));
+      const b = Ball(pos.x, pos.y, true);
       balls.push(b);
       popsRemaining -= 1;
       poppedCount += 1;
@@ -580,6 +685,14 @@
     pulse += dt;
     let anyActive = false;
 
+    // Animate oscillating walls.
+    for (const w of walls) {
+      if (w.move) {
+        const o = Math.sin(pulse * w.move.speed + w.move.phase) * w.move.amp;
+        if (w.move.axis === "x") w.x = w.base.x + o; else w.y = w.base.y + o;
+      }
+    }
+
     for (const b of balls) {
       b.hue = (b.hue + b.hueSpin * dt + 360) % 360;
       if (b.life === "floating") {
@@ -604,10 +717,11 @@
         if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); }
         if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); }
         if (b.y > H - b.r) { b.y = H - b.r; b.vy = -Math.abs(b.vy); }
+        for (const w of walls) collideWall(b, w);
       } else if (b.life === "growing") {
         anyActive = true;
         b.r += GROW * dt;
-        if (b.r >= b.maxR) { b.r = b.maxR; b.life = "holding"; b.hold = HOLD_TIME * curHoldMul; }
+        if (b.r >= b.maxR) { b.r = b.maxR; b.life = "holding"; b.hold = HOLD_TIME * holdLevelMul * curHoldMul; }
       } else if (b.life === "holding") {
         anyActive = true;
         b.hold -= dt;
@@ -625,7 +739,7 @@
         for (const a of balls) {
           if (a.life === "growing" || a.life === "holding" || a.life === "shrinking") {
             const dx = b.x - a.x, dy = b.y - a.y;
-            if (dx * dx + dy * dy < (b.r + a.r) * (b.r + a.r)) {
+            if (dx * dx + dy * dy < (b.r + a.r) * (b.r + a.r) && !losBlocked(a.x, a.y, b.x, b.y)) {
               b.life = "growing";
               poppedCount += 1;
               chain += 1;
@@ -684,9 +798,38 @@
     }
   }
 
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function drawWalls() {
+    for (const w of walls) {
+      const grad = ctx.createLinearGradient(w.x, w.y, w.x + w.w, w.y + w.h);
+      grad.addColorStop(0, "#5e74c8");
+      grad.addColorStop(1, "#3a4690");
+      roundRect(w.x, w.y, w.w, w.h, 7);
+      ctx.fillStyle = grad;
+      ctx.shadowColor = "rgba(94,200,255,0.5)";
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      roundRect(w.x + 2, w.y + 2, w.w - 4, w.h - 4, 5);
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
   function render() {
     ctx.clearRect(0, 0, W, H);
     for (const b of balls) if (b.life !== "dead") drawBall(b);
+    drawWalls();
 
     for (const p of particles) {
       ctx.globalAlpha = Math.max(0, p.life);
@@ -738,7 +881,7 @@
   updateHud();
   showOverlay({
     title: "Pop'em All!",
-    body: "One click sets off a <b>chain reaction</b>. Each popped ball expands and pops any ball it touches. Reach the <b>target</b> to clear the level, earn <b style='color:var(--gold)'>coins</b>, and buy <b>powerups</b> between levels.",
+    body: "One click sets off a <b>chain reaction</b>. Each popped ball expands and pops any ball it touches. Reach the <b>target</b> to clear the level, earn <b style='color:var(--gold)'>coins</b>, and buy <b>powerups</b> between levels. Later levels add <b>walls</b> and faster balls — walls block chains, so place your pops wisely!",
     btn: "Play", showShop: false, showPill: true,
   });
   requestAnimationFrame(loop);
