@@ -29,11 +29,11 @@ As you climb, the field mixes in special balls (telegraphed by colour/markers):
 
 ## Scaling difficulty
 
-From level 3, **walls** appear — drawn from a library of partially-randomized
-layouts (splits, crosses, pillars, serpentine lanes, diagonals, open boxes,
-pinwheels) that grows more varied and elaborate as you climb, with some bars
-oscillating. Walls block chains **and explosions** — a pop can't reach (or even
-render) past a wall, so a single big blast no longer clears everything. From
+From level 3 the arena becomes a **maze** — a randomly generated, fully
+connected (always solvable) layout whose grid gets finer and tighter as you
+climb, so the maze grows more complex every few levels. Walls block chains
+**and explosions** — a pop can't reach (or even render) past a wall, so a single
+big blast no longer clears everything and you have to read the maze. From
 level 6 balls also speed up and the chain window shrinks. Powerups counter all
 of this, but each extra copy costs more, so you choose rather than buy everything.
 

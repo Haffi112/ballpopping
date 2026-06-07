@@ -466,111 +466,70 @@
 
   function rand(a, b) { return a + Math.random() * (b - a); }
 
-  // Bars are partially randomized each spawn and drawn from a library of layout
-  // patterns that unlocks more variety with level. Every pattern is built with
-  // gaps so balls keep circulating (no sealed regions).
+  // Walls form a real maze: a randomized-DFS spanning tree of grid cells, so the
+  // passages are always fully connected (solvable). The grid gets finer and the
+  // maze tighter (less braiding) as levels rise, so complexity grows with level.
+  // The arena border is the maze's outer wall, so only interior walls are drawn.
   function bar(x, y, w, h, move) { return { x, y, w, h, base: { x, y }, move: move || null }; }
   const T = WALL_T;
 
-  function pVsplit(lv) {                 // vertical wall(s) with a horizontal gap
-    const out = [], n = lv >= 9 ? 2 : 1;
-    for (let i = 0; i < n; i++) {
-      const x = n === 1 ? rand(W * 0.35, W * 0.65)
-                        : (i === 0 ? rand(W * 0.22, W * 0.4) : rand(W * 0.6, W * 0.78));
-      const gapY = rand(140, H - 260), gapH = rand(110, 150);
-      out.push(bar(x - T / 2, 40, T, gapY - 40));
-      out.push(bar(x - T / 2, gapY + gapH, T, H - 40 - (gapY + gapH)));
+  function buildMaze(cols, rows, braid) {
+    const cw = W / cols, ch = H / rows;
+    // vw[c][r] = wall to the right of cell (c,r); hw[c][r] = wall below cell (c,r)
+    const vw = Array.from({ length: cols - 1 }, () => Array(rows).fill(true));
+    const hw = Array.from({ length: cols }, () => Array(rows - 1).fill(true));
+    const seen = Array.from({ length: cols }, () => Array(rows).fill(false));
+
+    // Recursive backtracker carves a perfect (fully-connected) maze.
+    let x = Math.floor(Math.random() * cols), y = Math.floor(Math.random() * rows);
+    seen[x][y] = true;
+    const stack = [[x, y]];
+    while (stack.length) {
+      [x, y] = stack[stack.length - 1];
+      const nb = [];
+      if (x > 0 && !seen[x - 1][y]) nb.push([x - 1, y, "L"]);
+      if (x < cols - 1 && !seen[x + 1][y]) nb.push([x + 1, y, "R"]);
+      if (y > 0 && !seen[x][y - 1]) nb.push([x, y - 1, "U"]);
+      if (y < rows - 1 && !seen[x][y + 1]) nb.push([x, y + 1, "D"]);
+      if (!nb.length) { stack.pop(); continue; }
+      const [nx, ny, dir] = nb[Math.floor(Math.random() * nb.length)];
+      if (dir === "R") vw[x][y] = false;
+      else if (dir === "L") vw[x - 1][y] = false;
+      else if (dir === "D") hw[x][y] = false;
+      else if (dir === "U") hw[x][y - 1] = false;
+      seen[nx][ny] = true;
+      stack.push([nx, ny]);
     }
-    return out;
-  }
-  function pHsplit(lv) {                 // horizontal wall(s) with a vertical gap
-    const out = [], n = lv >= 9 ? 2 : 1;
-    for (let i = 0; i < n; i++) {
-      const y = n === 1 ? rand(H * 0.35, H * 0.65)
-                        : (i === 0 ? rand(H * 0.22, H * 0.4) : rand(H * 0.6, H * 0.78));
-      const gapX = rand(160, W - 290), gapW = rand(110, 150);
-      out.push(bar(40, y - T / 2, gapX - 40, T));
-      out.push(bar(gapX + gapW, y - T / 2, W - 40 - (gapX + gapW), T));
-    }
-    return out;
-  }
-  function pCross(lv) {                  // plus with gaps at all four ends
-    const cx = rand(W * 0.42, W * 0.58), cy = rand(H * 0.42, H * 0.58);
-    const vGap = rand(110, 145), hGap = rand(120, 160);
-    return [bar(cx - T / 2, vGap, T, H - 2 * vGap), bar(hGap, cy - T / 2, W - 2 * hGap, T)];
-  }
-  function pPillars(lv) {                // scattered short columns
-    const out = [], n = Math.min(7, 3 + Math.floor((lv - 3) / 2));
-    for (let i = 0; i < n; i++) {
-      const vertical = Math.random() < 0.6;
-      const x = rand(W * 0.12, W * 0.88), y = rand(H * 0.1, H * 0.7);
-      if (vertical) out.push(bar(x - T / 2, y, T, rand(70, 150)));
-      else out.push(bar(x, y - T / 2, rand(70, 150), T));
-    }
-    return out;
-  }
-  function pLanes(lv) {                  // serpentine bars alternating sides
-    const out = [], rows = Math.min(5, 2 + Math.floor((lv - 3) / 2));
-    for (let i = 0; i < rows; i++) {
-      const y = 90 + (i + 0.5) * (H - 150) / rows;
-      const len = rand(W * 0.5, W * 0.68), x = (i % 2 === 0) ? 0 : W - len;
-      out.push(bar(x, y - T / 2, len, T));
-    }
-    return out;
-  }
-  function pDiagonal(lv) {               // stepped diagonal barrier
-    const out = [], steps = Math.min(6, 3 + Math.floor((lv - 3) / 2));
-    const flip = Math.random() < 0.5;
-    for (let i = 0; i < steps; i++) {
-      const fx = 90 + i * (W - 220) / steps + rand(-15, 15);
-      const x = flip ? W - fx : fx;
-      const y = 90 + i * (H - 200) / steps + rand(-15, 15);
-      out.push(bar(x - T / 2, y, T, rand(60, 110)));
-    }
-    return out;
-  }
-  function pBox(lv) {                    // open box (ring with a gap on one side)
-    const bw = rand(260, 360), bh = rand(180, 250);
-    const x = (W - bw) / 2 + rand(-50, 50), y = (H - bh) / 2 + rand(-30, 30);
-    const gap = rand(90, 120), side = Math.floor(rand(0, 4));
+    // Braid: knock out some remaining walls to add loops and wider openings
+    // (keeps it solvable, just more forgiving). Less braiding => tighter maze.
+    for (let c = 0; c < cols - 1; c++) for (let r = 0; r < rows; r++) if (vw[c][r] && Math.random() < braid) vw[c][r] = false;
+    for (let c = 0; c < cols; c++) for (let r = 0; r < rows - 1; r++) if (hw[c][r] && Math.random() < braid) hw[c][r] = false;
+
+    // Merge collinear segments into continuous bars (cleaner look, fewer rects).
     const out = [];
-    // four sides, with `gap` cut out of one of them
-    function edge(ex, ey, ew, eh, cut) {
-      if (!cut) { out.push(bar(ex, ey, ew, eh)); return; }
-      if (ew > eh) { const g = ex + (ew - gap) / 2; out.push(bar(ex, ey, g - ex, eh)); out.push(bar(g + gap, ey, ex + ew - (g + gap), eh)); }
-      else { const g = ey + (eh - gap) / 2; out.push(bar(ex, ey, ew, g - ey)); out.push(bar(ex, g + gap, ew, ey + eh - (g + gap))); }
+    for (let c = 0; c < cols - 1; c++) {
+      const px = (c + 1) * cw;
+      for (let r = 0; r < rows;) {
+        if (vw[c][r]) { let r2 = r; while (r2 < rows && vw[c][r2]) r2++; out.push(bar(px - T / 2, r * ch, T, (r2 - r) * ch)); r = r2; }
+        else r++;
+      }
     }
-    edge(x, y, bw, T, side === 0);                 // top
-    edge(x, y + bh - T, bw, T, side === 1);         // bottom
-    edge(x, y, T, bh, side === 2);                 // left
-    edge(x + bw - T, y, T, bh, side === 3);         // right
+    for (let r = 0; r < rows - 1; r++) {
+      const py = (r + 1) * ch;
+      for (let c = 0; c < cols;) {
+        if (hw[c][r]) { let c2 = c; while (c2 < cols && hw[c2][r]) c2++; out.push(bar(c * cw, py - T / 2, (c2 - c) * cw, T)); c = c2; }
+        else c++;
+      }
+    }
     return out;
   }
-  function pPinwheel(lv) {               // four arms around a hollow centre
-    const cx = W / 2 + rand(-30, 30), cy = H / 2 + rand(-30, 30), arm = rand(120, 175), c = 22;
-    return [
-      bar(cx - T / 2, cy - c - arm, T, arm), bar(cx - T / 2, cy + c, T, arm),
-      bar(cx - c - arm, cy - T / 2, arm, T), bar(cx + c, cy - T / 2, arm, T),
-    ];
-  }
-  function maybeMove(out, lv) {
-    if (lv < 8 || !out.length) return;
-    const moves = Math.min(2, 1 + Math.floor((lv - 8) / 5));
-    for (let m = 0; m < moves; m++) {
-      const wll = out[Math.floor(Math.random() * out.length)];
-      if (!wll || wll.move) continue;
-      wll.move = (wll.h > wll.w)
-        ? { axis: "x", amp: rand(60, 120), speed: rand(0.5, 0.9), phase: rand(0, 6) }
-        : { axis: "y", amp: rand(40, 90), speed: rand(0.5, 0.9), phase: rand(0, 6) };
-    }
-  }
-  const WALL_PATTERNS = [pVsplit, pHsplit, pCross, pPillars, pLanes, pDiagonal, pBox, pPinwheel];
+
   function generateWalls(lv) {
-    if (lv < 3) return [];               // walls now start at level 3
-    const poolN = Math.min(WALL_PATTERNS.length, 3 + Math.floor((lv - 3) / 2));
-    let out = WALL_PATTERNS[Math.floor(Math.random() * poolN)](lv);
-    if (lv >= 11) out = out.concat(pPillars(lv).slice(0, 1 + Math.floor(Math.random() * 2)));
-    // clamp to arena and refresh motion anchors
+    if (lv < 3) return [];                 // maze appears from level 3
+    const cols = Math.min(7, 3 + Math.floor((lv - 3) / 3));
+    const rows = Math.min(6, 2 + Math.floor((lv - 3) / 3));
+    const braid = Math.max(0.08, 0.30 - lv * 0.012);   // tighter (less open) as levels rise
+    const out = buildMaze(cols, rows, braid);
     for (const b of out) {
       if (b.x < 0) { b.w += b.x; b.x = 0; }
       if (b.y < 0) { b.h += b.y; b.y = 0; }
@@ -578,7 +537,6 @@
       if (b.y + b.h > H) b.h = H - b.y;
       b.base = { x: b.x, y: b.y };
     }
-    maybeMove(out, lv);
     return out.filter(b => b.w > 3 && b.h > 3);
   }
 
@@ -1086,12 +1044,19 @@
     ctx.closePath();
     ctx.clip("evenodd");
   }
+  // Does a wall fall within the blast circle? (only those can clip its render)
+  function wallTouchesCircle(b, w) {
+    const cx = Math.max(w.x, Math.min(b.x, w.x + w.w));
+    const cy = Math.max(w.y, Math.min(b.y, w.y + w.h));
+    const dx = b.x - cx, dy = b.y - cy;
+    return dx * dx + dy * dy <= b.r * b.r;
+  }
 
   function drawBall(b) {
     if (b.r <= 0) return;
     const active = b.life !== "floating";
     const doClip = active && walls.length > 0;
-    if (doClip) { ctx.save(); for (const w of walls) clipOutWallShadow(b.x, b.y, w); }
+    if (doClip) { ctx.save(); for (const w of walls) if (wallTouchesCircle(b, w)) clipOutWallShadow(b.x, b.y, w); }
     let alpha = 1;
     if (b.life === "shrinking") alpha = Math.max(0.15, b.r / b.maxR);
     const sat = b.sat, lig = b.lig;
@@ -1222,13 +1187,13 @@
       const grad = ctx.createLinearGradient(w.x, w.y, w.x + w.w, w.y + w.h);
       grad.addColorStop(0, "#5e74c8");
       grad.addColorStop(1, "#3a4690");
-      roundRect(w.x, w.y, w.w, w.h, 7);
+      roundRect(w.x, w.y, w.w, w.h, 4);
       ctx.fillStyle = grad;
       ctx.shadowColor = "rgba(94,200,255,0.5)";
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 10;
       ctx.fill();
       ctx.shadowBlur = 0;
-      roundRect(w.x + 2, w.y + 2, w.w - 4, w.h - 4, 5);
+      roundRect(w.x + 2, w.y + 2, w.w - 4, w.h - 4, 3);
       ctx.strokeStyle = "rgba(255,255,255,0.18)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
@@ -1323,7 +1288,7 @@
   updateHud();
   showOverlay({
     title: "Pop'em All!",
-    body: "One click sets off a <b>chain reaction</b>. Each popped ball expands and pops any ball it touches. Reach the <b>target</b> to clear the level, earn <b style='color:var(--gold)'>coins</b>, and buy <b>powerups</b> between levels. Later levels add <b>walls</b>, faster balls, and special balls:" +
+    body: "One click sets off a <b>chain reaction</b>. Each popped ball expands and pops any ball it touches. Reach the <b>target</b> to clear the level, earn <b style='color:var(--gold)'>coins</b>, and buy <b>powerups</b> between levels. Later levels weave the walls into a <b>maze</b> (it blocks chains!) that grows more complex, plus faster balls and special balls:" +
           "<br><span style='font-size:12px;line-height:1.8'>" +
           "<b style='color:hsl(14,92%,62%)'>● Bomb</b> bigger blast &nbsp; " +
           "<b style='color:hsl(220,14%,66%)'>● Stone</b> won't chain &nbsp; " +
