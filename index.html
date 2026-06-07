@@ -291,10 +291,10 @@
   document.addEventListener("webkitfullscreenchange", onFsChange);
 
   // ----- Sound (Web Audio, generated) ----------------------------------------
-  // Routed through a master gain + compressor so big chains never clip, and pop
-  // voices are throttled + pitched along a pentatonic scale so chains sing
-  // instead of turning into a wall of noise.
-  let audioCtx = null, master = null;
+  // Each ball's colour maps to a note in a C-major pentatonic scale, so any
+  // balls popping together harmonise. Warm plucked voices run through a master
+  // compressor (no clipping) and a feedback-delay reverb (so chains shimmer).
+  let audioCtx = null, master = null, reverbBus = null;
   let soundOn = localStorage.getItem("popSound") !== "off";
   soundToggle.textContent = soundOn ? "🔊" : "🔇";
 
@@ -303,57 +303,104 @@
       try {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const comp = audioCtx.createDynamicsCompressor();
-        comp.threshold.value = -18; comp.knee.value = 24; comp.ratio.value = 12;
+        comp.threshold.value = -16; comp.knee.value = 26; comp.ratio.value = 12;
         comp.attack.value = 0.003; comp.release.value = 0.25;
         master = audioCtx.createGain();
         master.gain.value = 0.5;
         master.connect(comp).connect(audioCtx.destination);
+        // Feedback-delay "reverb" so pops bloom and chains shimmer together.
+        const delay = audioCtx.createDelay(1.0); delay.delayTime.value = 0.26;
+        const fb = audioCtx.createGain(); fb.gain.value = 0.34;
+        const damp = audioCtx.createBiquadFilter(); damp.type = "lowpass"; damp.frequency.value = 2600;
+        const wet = audioCtx.createGain(); wet.gain.value = 0.5;
+        delay.connect(damp); damp.connect(fb); fb.connect(delay);
+        damp.connect(wet); wet.connect(comp);
+        reverbBus = delay;
       } catch (e) { audioCtx = null; }
     }
     if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
   }
-  function tone(freq, dur, type, gain, when) {
+  // A warm, bell/marimba-ish plucked voice: detuned pair + shimmer partial,
+  // lowpass "pluck" envelope, stereo pan, and a reverb send.
+  function note(freq, opt) {
     if (!soundOn || !audioCtx) return;
-    const t = (when || audioCtx.currentTime);
-    const osc = audioCtx.createOscillator();
+    opt = opt || {};
+    const t = opt.when || audioCtx.currentTime;
+    const dur = opt.dur || 0.5, peak = opt.gain || 0.12;
+    const types = opt.types || ["triangle", "sine"];
+    const bright = opt.bright == null ? 1 : opt.bright;
+    const filt = audioCtx.createBiquadFilter();
+    filt.type = "lowpass"; filt.Q.value = 1.8;
+    filt.frequency.setValueAtTime(Math.min(9000, freq * 6 * bright), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(300, freq * 1.4), t + dur * 0.7);
     const g = audioCtx.createGain();
-    osc.type = type || "sine";
-    osc.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain || 0.15, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.006);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(g).connect(master);
-    osc.start(t);
-    osc.stop(t + dur + 0.02);
+    const o1 = audioCtx.createOscillator(); o1.type = types[0]; o1.frequency.value = freq; o1.detune.value = -6;
+    const o2 = audioCtx.createOscillator(); o2.type = types[1] || "sine"; o2.frequency.value = freq; o2.detune.value = 6;
+    const o3 = audioCtx.createOscillator(); o3.type = "sine"; o3.frequency.value = freq * 2.01;
+    const g3 = audioCtx.createGain(); g3.gain.value = 0.22;
+    o1.connect(filt); o2.connect(filt); o3.connect(g3); g3.connect(filt);
+    filt.connect(g);
+    let out = g;
+    if (audioCtx.createStereoPanner) {
+      const pan = audioCtx.createStereoPanner();
+      pan.pan.value = Math.max(-1, Math.min(1, opt.pan || 0));
+      g.connect(pan); out = pan;
+    }
+    out.connect(master);
+    if (reverbBus) { const s = audioCtx.createGain(); s.gain.value = opt.reverb == null ? 0.25 : opt.reverb; out.connect(s); s.connect(reverbBus); }
+    const end = t + dur + 0.05;
+    o1.start(t); o2.start(t); o3.start(t);
+    o1.stop(end); o2.stop(end); o3.stop(end);
   }
-  // C-major pentatonic across ~2.5 octaves
-  const SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33,
-                 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51];
+  // C-major pentatonic, two octaves. Color (hue) picks the note, so any set of
+  // balls that pop together is automatically consonant.
+  const TONES = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
+  function hueToTone(h) { return TONES[Math.floor((((h % 360) + 360) % 360) / 360 * TONES.length) % TONES.length]; }
   let lastPopAt = -1;
   const sfx = {
-    pop(chain) {
+    // `b` is the ball being popped: its hue sets the pitch, its x sets the pan,
+    // and its type gives a sonic signature.
+    pop(b) {
       if (!soundOn || !audioCtx) return;
       const now = audioCtx.currentTime;
-      if (now - lastPopAt < 0.035) return;   // throttle dense bursts
+      if (now - lastPopAt < 0.028) return;   // light throttle so it stays musical
       lastPopAt = now;
-      const note = SCALE[Math.min(chain - 1, SCALE.length - 1)];
-      tone(note, 0.16, "triangle", 0.13);
-      tone(note * 2, 0.08, "sine", 0.05);    // sparkle
+      const base = hueToTone(b.hue || 0);
+      const pan = ((b.x || W / 2) / W * 2 - 1) * 0.7;
+      const ty = b.type || "normal";
+      if (ty === "bomb") {            // deep, blooming boom
+        note(base / 2, { dur: 0.95, gain: 0.14, pan, reverb: 0.45, types: ["sawtooth", "triangle"] });
+        note(base, { dur: 0.7, gain: 0.09, pan, reverb: 0.4 });
+      } else if (ty === "stone") {    // dull, short thud
+        note(base / 2, { dur: 0.28, gain: 0.11, pan, reverb: 0.08, types: ["square", "sine"], bright: 0.5 });
+      } else if (ty === "runner") {   // bright with an octave sparkle
+        note(base, { dur: 0.4, gain: 0.10, pan, reverb: 0.25 });
+        note(base * 2, { dur: 0.3, gain: 0.05, pan, reverb: 0.35, when: now + 0.05 });
+      } else if (ty === "splitter") { // a quick two-note flourish (stays in scale)
+        note(base, { dur: 0.4, gain: 0.10, pan, reverb: 0.3 });
+        note(hueToTone(b.hue + 96), { dur: 0.55, gain: 0.08, pan, reverb: 0.4, when: now + 0.09 });
+      } else {                        // normal: warm pluck
+        note(base, { dur: 0.6, gain: 0.12, pan, reverb: 0.3 });
+      }
     },
     win() {
-      [0, 2, 4, 7].forEach((s, i) =>
-        tone(SCALE[s] * 2, 0.3, "sine", 0.18, (audioCtx ? audioCtx.currentTime : 0) + i * 0.1));
+      const t0 = audioCtx ? audioCtx.currentTime : 0;
+      [0, 2, 4, 6, 8].forEach((i, k) => note(TONES[i], { dur: 0.9, gain: 0.12, when: t0 + k * 0.09, reverb: 0.5, pan: (k - 2) * 0.25 }));
+      note(TONES[10] * 2, { dur: 1.3, gain: 0.07, when: t0 + 0.5, reverb: 0.6 });
     },
     lose() {
-      [392, 329.63, 261.63, 196].forEach((f, i) =>
-        tone(f, 0.34, "sawtooth", 0.1, (audioCtx ? audioCtx.currentTime : 0) + i * 0.13));
+      const t0 = audioCtx ? audioCtx.currentTime : 0;
+      [8, 6, 4, 2, 0].forEach((i, k) => note(TONES[i], { dur: 0.6, gain: 0.10, when: t0 + k * 0.12, reverb: 0.4, types: ["sine", "triangle"] }));
     },
     buy() {
       const t0 = audioCtx ? audioCtx.currentTime : 0;
-      tone(880, 0.1, "square", 0.1, t0);
-      tone(1320, 0.14, "square", 0.1, t0 + 0.07);
+      note(TONES[7], { dur: 0.18, gain: 0.10, when: t0, reverb: 0.2, types: ["square", "sine"] });
+      note(TONES[9], { dur: 0.32, gain: 0.10, when: t0 + 0.06, reverb: 0.28, types: ["square", "sine"] });
     },
-    click() { tone(660, 0.07, "square", 0.08); },
+    click() { note(TONES[5], { dur: 0.12, gain: 0.07, reverb: 0.12, types: ["square", "sine"] }); },
   };
   soundToggle.addEventListener("click", () => {
     soundOn = !soundOn;
@@ -750,7 +797,7 @@
       chain = Math.max(chain, 1);
       state = STATE.REACT;
       score += 10;
-      sfx.pop(1);
+      sfx.pop(b);
       addParticles(b.x, b.y, b.hue, 14);
       addFloater(b.x, b.y - 14, "+1");
       updateHud();
@@ -894,7 +941,7 @@
               chain += 1;
               const pts = 10 + chain * 5 + b.bonus;
               score += pts;
-              sfx.pop(chain);
+              sfx.pop(b);
               addParticles(b.x, b.y, b.hue, b.type === "bomb" ? 24 : 12);
               addFloater(b.x, b.y - 14, "+" + pts);
               if (b.splits > 0) {

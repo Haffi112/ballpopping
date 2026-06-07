@@ -41,7 +41,9 @@ of this, but each extra copy costs more, so you choose rather than buy everythin
 
 - Smooth `requestAnimationFrame` loop with delta timing
 - Glowing balls, particle bursts, score pop-ups
-- Generated Web Audio sound effects (toggle with the 🔊 button)
+- Harmonic Web Audio sound: each ball's **colour maps to a note** in a C-major
+  pentatonic scale, so chains play in harmony — warm plucked voices with stereo
+  panning and reverb, and a signature tone per special ball (toggle with 🔊)
 - Responsive, retina-aware canvas
 - Start / level-complete / game-over screens with live HUD
 - Zero external dependencies — a single self-contained HTML file
