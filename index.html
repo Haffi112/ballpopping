@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#0b1026" />
 <title>Pop'em All! — Chain Reaction</title>
 <style>
   :root {
     --bg0: #0b1026;
-    --bg1: #1a1140;
     --accent: #ff5e9c;
     --accent2: #5ec8ff;
     --text: #eef1ff;
     --muted: #9aa3c7;
+    --gold: #ffd75e;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -31,12 +31,12 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 14px;
-    padding: 12px;
+    gap: 10px;
+    padding: 8px;
   }
   h1 {
     margin: 0;
-    font-size: clamp(26px, 5vw, 44px);
+    font-size: clamp(20px, 4vw, 38px);
     font-weight: 800;
     letter-spacing: 0.5px;
     background: linear-gradient(90deg, var(--accent), var(--accent2));
@@ -50,30 +50,26 @@
     max-width: 820px;
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    justify-content: space-between;
+    gap: 8px;
+    justify-content: center;
     align-items: center;
   }
   .stat {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
-    padding: 8px 14px;
-    min-width: 78px;
+    padding: 6px 12px;
+    min-width: 64px;
     text-align: center;
-    backdrop-filter: blur(6px);
   }
   .stat .label {
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--muted);
   }
-  .stat .value {
-    font-size: 20px;
-    font-weight: 700;
-    line-height: 1.15;
-  }
+  .stat .value { font-size: 18px; font-weight: 700; line-height: 1.15; }
+  .stat.coins .value { color: var(--gold); }
   #stageWrap {
     position: relative;
     width: 100%;
@@ -98,31 +94,28 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 14px;
+    gap: 12px;
     text-align: center;
-    padding: 24px;
-    background: rgba(7, 9, 24, 0.72);
+    padding: 18px;
+    background: rgba(7, 9, 24, 0.78);
     border-radius: 16px;
     backdrop-filter: blur(4px);
     transition: opacity 0.25s ease;
+    overflow: auto;
   }
   #overlay.hidden { opacity: 0; pointer-events: none; }
-  #overlay h2 {
-    margin: 0;
-    font-size: clamp(24px, 4.5vw, 38px);
-    font-weight: 800;
-  }
+  #overlay h2 { margin: 0; font-size: clamp(20px, 4vw, 34px); font-weight: 800; }
   #overlay p { margin: 0; max-width: 460px; color: var(--muted); line-height: 1.5; }
-  #overlay .big { font-size: clamp(20px, 4vw, 30px); color: var(--text); font-weight: 700; }
+  .big { font-size: clamp(20px, 4vw, 30px); color: var(--text); font-weight: 700; }
   .btn {
     appearance: none;
     border: none;
     cursor: pointer;
     font: inherit;
     font-weight: 700;
-    font-size: 18px;
+    font-size: 17px;
     color: #11122b;
-    padding: 12px 30px;
+    padding: 11px 28px;
     border-radius: 999px;
     background: linear-gradient(90deg, var(--accent), var(--accent2));
     box-shadow: 0 8px 24px rgba(255, 94, 156, 0.35);
@@ -131,25 +124,42 @@
   .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(94, 200, 255, 0.4); }
   .btn:active { transform: translateY(0); }
   .pill {
-    display: inline-flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: center;
-    font-size: 13px;
-    color: var(--muted);
+    display: inline-flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    font-size: 13px; color: var(--muted);
   }
   .pill b { color: var(--text); }
+  /* Shop */
+  #shop { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 10px; }
+  #shop.hidden { display: none; }
+  .shopHead { font-weight: 700; color: var(--gold); font-size: 15px; }
+  #shopGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+  .card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 8px 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    cursor: pointer;
+    transition: transform 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+  }
+  .card:hover:not(.disabled) { transform: translateY(-2px); border-color: var(--accent2); background: rgba(94,200,255,0.08); }
+  .card.disabled { opacity: 0.4; cursor: not-allowed; }
+  .card .ic { font-size: 24px; line-height: 1; }
+  .card .nm { font-size: 12px; font-weight: 700; }
+  .card .ds { font-size: 10px; color: var(--muted); min-height: 24px; }
+  .card .cost { font-size: 12px; font-weight: 700; color: var(--gold); }
+  .card .owned { font-size: 10px; color: var(--accent2); min-height: 13px; }
   #soundToggle {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.12);
     color: var(--text);
     border-radius: 10px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     cursor: pointer;
     font: inherit;
-    font-size: 18px;
+    font-size: 16px;
   }
-  .foot { color: var(--muted); font-size: 12px; }
+  .foot { color: var(--muted); font-size: 11px; text-align: center; }
 </style>
 </head>
 <body>
@@ -159,6 +169,8 @@
   <div id="hud">
     <div class="stat"><div class="label">Level</div><div class="value" id="uiLevel">1</div></div>
     <div class="stat"><div class="label">Popped</div><div class="value"><span id="uiPopped">0</span> / <span id="uiTarget">1</span></div></div>
+    <div class="stat"><div class="label">Pops</div><div class="value" id="uiPops">1</div></div>
+    <div class="stat coins"><div class="label">Coins</div><div class="value" id="uiCoins">0</div></div>
     <div class="stat"><div class="label">Score</div><div class="value" id="uiScore">0</div></div>
     <div class="stat"><div class="label">Best</div><div class="value" id="uiBest">0</div></div>
     <button id="soundToggle" title="Toggle sound">🔊</button>
@@ -169,39 +181,64 @@
     <div id="overlay">
       <h2 id="ovTitle">Pop'em All!</h2>
       <p id="ovBody">One click sets off a chain reaction. Each ball you pop expands and pops any ball it touches. Reach the target to advance!</p>
-      <div class="pill"><span>🎯 Hit the <b>target</b></span><span>🖱️ <b>One</b> click per level</span><span>⛓️ Build <b>chains</b></span></div>
+      <div id="shop" class="hidden">
+        <div class="shopHead">🪙 <span id="shopCoins">0</span> coins — spend them on powerups for the next level</div>
+        <div id="shopGrid"></div>
+      </div>
+      <div class="pill" id="ovPill"><span>🎯 Hit the <b>target</b></span><span>⛓️ Build <b>chains</b></span><span>🛒 Buy <b>powerups</b></span></div>
       <button class="btn" id="ovBtn">Play</button>
     </div>
   </div>
 
-  <div class="foot">Click or tap inside the arena to drop your pop. Bigger chains = more points.</div>
+  <div class="foot">Click or tap inside the arena to drop a pop. Bigger chains = more coins &amp; points.</div>
 </div>
 
 <script>
 "use strict";
 (function () {
-  // ----- Canvas / DPR setup ---------------------------------------------------
+  // ----- Canvas / layout ------------------------------------------------------
   const canvas = document.getElementById("stage");
   const ctx = canvas.getContext("2d");
   const W = 800, H = 600;          // logical resolution
   let scaleX = 1, scaleY = 1;
 
-  function resize() {
+  const app = document.getElementById("app");
+  const h1El = app.querySelector("h1");
+  const hudEl = document.getElementById("hud");
+  const footEl = app.querySelector(".foot");
+  const stageWrap = document.getElementById("stageWrap");
+
+  // Size the stage so the WHOLE arena always fits the viewport (fixes landscape
+  // clipping where balls appeared to fly off-screen).
+  function layout() {
+    const pad = 8, gap = 10;
+    const appW = app.clientWidth - pad * 2;
+    const avH = window.innerHeight - h1El.offsetHeight - hudEl.offsetHeight -
+                footEl.offsetHeight - gap * 3 - pad * 2;
+    let w = Math.min(820, appW, Math.max(140, avH) * (4 / 3));
+    w = Math.max(140, w);
+    stageWrap.style.width = w + "px";
+    setupCanvas();
+  }
+  function setupCanvas() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
     scaleX = W / rect.width;
     scaleY = H / rect.height;
   }
-  window.addEventListener("resize", resize);
+  window.addEventListener("resize", layout);
+  window.addEventListener("orientationchange", () => setTimeout(layout, 150));
 
   // ----- UI references --------------------------------------------------------
   const ui = {
     level: document.getElementById("uiLevel"),
     popped: document.getElementById("uiPopped"),
     target: document.getElementById("uiTarget"),
+    pops: document.getElementById("uiPops"),
+    coins: document.getElementById("uiCoins"),
     score: document.getElementById("uiScore"),
     best: document.getElementById("uiBest"),
   };
@@ -209,42 +246,77 @@
   const ovTitle = document.getElementById("ovTitle");
   const ovBody = document.getElementById("ovBody");
   const ovBtn = document.getElementById("ovBtn");
+  const ovPill = document.getElementById("ovPill");
+  const shopEl = document.getElementById("shop");
+  const shopCoinsEl = document.getElementById("shopCoins");
+  const shopGrid = document.getElementById("shopGrid");
   const soundToggle = document.getElementById("soundToggle");
 
   // ----- Sound (Web Audio, generated) ----------------------------------------
-  let audioCtx = null;
+  // Routed through a master gain + compressor so big chains never clip, and pop
+  // voices are throttled + pitched along a pentatonic scale so chains sing
+  // instead of turning into a wall of noise.
+  let audioCtx = null, master = null;
   let soundOn = localStorage.getItem("popSound") !== "off";
   soundToggle.textContent = soundOn ? "🔊" : "🔇";
 
   function ensureAudio() {
     if (!audioCtx) {
-      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-      catch (e) { audioCtx = null; }
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = audioCtx.createDynamicsCompressor();
+        comp.threshold.value = -18; comp.knee.value = 24; comp.ratio.value = 12;
+        comp.attack.value = 0.003; comp.release.value = 0.25;
+        master = audioCtx.createGain();
+        master.gain.value = 0.5;
+        master.connect(comp).connect(audioCtx.destination);
+      } catch (e) { audioCtx = null; }
     }
     if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
   }
-  function blip(freq, dur, type, gain) {
+  function tone(freq, dur, type, gain, when) {
     if (!soundOn || !audioCtx) return;
-    const t = audioCtx.currentTime;
+    const t = (when || audioCtx.currentTime);
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
     osc.type = type || "sine";
-    osc.frequency.setValueAtTime(freq, t);
-    osc.frequency.exponentialRampToValueAtTime(freq * 1.6, t + dur);
+    osc.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain || 0.18, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(gain || 0.15, t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(g).connect(audioCtx.destination);
+    osc.connect(g).connect(master);
     osc.start(t);
     osc.stop(t + dur + 0.02);
   }
+  // C-major pentatonic across ~2.5 octaves
+  const SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33,
+                 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51];
+  let lastPopAt = -1;
   const sfx = {
-    pop(chain) { blip(300 + Math.min(chain, 25) * 45, 0.18, "triangle", 0.16); },
-    win() { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => blip(f, 0.25, "sine", 0.2), i * 90)); },
-    lose() { [330, 247, 175].forEach((f, i) => setTimeout(() => blip(f, 0.3, "sawtooth", 0.12), i * 120)); },
-    click() { blip(660, 0.08, "square", 0.1); },
+    pop(chain) {
+      if (!soundOn || !audioCtx) return;
+      const now = audioCtx.currentTime;
+      if (now - lastPopAt < 0.035) return;   // throttle dense bursts
+      lastPopAt = now;
+      const note = SCALE[Math.min(chain - 1, SCALE.length - 1)];
+      tone(note, 0.16, "triangle", 0.13);
+      tone(note * 2, 0.08, "sine", 0.05);    // sparkle
+    },
+    win() {
+      [0, 2, 4, 7].forEach((s, i) =>
+        tone(SCALE[s] * 2, 0.3, "sine", 0.18, (audioCtx ? audioCtx.currentTime : 0) + i * 0.1));
+    },
+    lose() {
+      [392, 329.63, 261.63, 196].forEach((f, i) =>
+        tone(f, 0.34, "sawtooth", 0.1, (audioCtx ? audioCtx.currentTime : 0) + i * 0.13));
+    },
+    buy() {
+      const t0 = audioCtx ? audioCtx.currentTime : 0;
+      tone(880, 0.1, "square", 0.1, t0);
+      tone(1320, 0.14, "square", 0.1, t0 + 0.07);
+    },
+    click() { tone(660, 0.07, "square", 0.08); },
   };
-
   soundToggle.addEventListener("click", () => {
     soundOn = !soundOn;
     localStorage.setItem("popSound", soundOn ? "on" : "off");
@@ -260,22 +332,32 @@
 
   let state = STATE.MENU;
   let balls = [], particles = [], floaters = [];
-  let level = 1, score = 0;
+  let level = 1, score = 0, coins = 0;
   let best = parseInt(localStorage.getItem("popBest") || "0", 10) || 0;
-  let target = 1, poppedCount = 0, chain = 0;
-  let pulse = 0;                          // hint pulse timer
+  let target = 1, poppedCount = 0, chain = 0, popsRemaining = 1;
+  let pulse = 0;
+
+  // Per-level powerup modifiers (applied from `boosts` at spawn, then reset).
+  let curMaxR = MAX_R, curSpeedMul = 1, curHoldMul = 1, curMagnet = false;
+  let boosts = { extraPops: 0, megaBlast: 0, slowMo: 0, sticky: 0, magnet: 0 };
+
+  const POWERUPS = [
+    { id: "extraPops", icon: "💥", name: "Extra Pop", desc: "+1 pop to deploy", cost: 6, max: 3 },
+    { id: "megaBlast", icon: "🟣", name: "Mega Blast", desc: "+30% pop size", cost: 7, max: 3 },
+    { id: "slowMo", icon: "🐌", name: "Slow-Mo", desc: "-25% ball speed", cost: 5, max: 3 },
+    { id: "sticky", icon: "⏱️", name: "Sticky Pops", desc: "Pops linger +50%", cost: 5, max: 3 },
+    { id: "magnet", icon: "🧲", name: "Magnet", desc: "Pops pull balls in", cost: 9, max: 1 },
+  ];
 
   ui.best.textContent = best;
 
   function levelConfig(lv) {
-    // Classic chain-reaction progression, then endless scaling.
     const table = [
       [5, 1], [10, 2], [15, 3], [20, 5], [25, 7], [30, 10],
       [35, 15], [40, 21], [45, 27], [50, 33], [55, 44], [60, 55],
     ];
     if (lv <= table.length) return { balls: table[lv - 1][0], target: table[lv - 1][1] };
-    const extra = lv - table.length;
-    return { balls: 60, target: Math.min(60, 55 + extra) };
+    return { balls: 60, target: Math.min(60, 55 + (lv - table.length)) };
   }
 
   function rand(a, b) { return a + Math.random() * (b - a); }
@@ -287,24 +369,29 @@
       x, y,
       vx: Math.cos(ang) * speed,
       vy: Math.sin(ang) * speed,
-      r: popped ? BASE_R : BASE_R,
+      r: BASE_R,
+      maxR: curMaxR,
       hue: Math.floor(rand(0, 360)),
       hueSpin: rand(-40, 40),
-      phase: rand(0, Math.PI * 2),
-      // life: floating | growing | holding | shrinking | dead
-      life: popped ? "growing" : "floating",
+      life: popped ? "growing" : "floating",   // floating|growing|holding|shrinking|dead
       hold: 0,
     };
   }
 
   function spawnLevel(lv) {
+    // Apply purchased powerups for this level, then consume them.
+    popsRemaining = 1 + boosts.extraPops;
+    curMaxR = MAX_R * (1 + 0.30 * boosts.megaBlast);
+    curSpeedMul = Math.pow(0.75, boosts.slowMo);
+    curHoldMul = 1 + 0.5 * boosts.sticky;
+    curMagnet = boosts.magnet > 0;
+    boosts = { extraPops: 0, megaBlast: 0, slowMo: 0, sticky: 0, magnet: 0 };
+
     const cfg = levelConfig(lv);
     target = cfg.target;
     poppedCount = 0;
     chain = 0;
-    balls = [];
-    particles = [];
-    floaters = [];
+    balls = []; particles = []; floaters = [];
     for (let i = 0; i < cfg.balls; i++) {
       balls.push(Ball(rand(BASE_R + 6, W - BASE_R - 6), rand(BASE_R + 6, H - BASE_R - 6), false));
     }
@@ -317,30 +404,60 @@
     ui.level.textContent = level;
     ui.popped.textContent = poppedCount;
     ui.target.textContent = target;
+    ui.pops.textContent = popsRemaining;
+    ui.coins.textContent = coins;
     ui.score.textContent = score;
     ui.best.textContent = best;
   }
 
-  function showOverlay(title, body, btn) {
-    ovTitle.textContent = title;
-    ovBody.innerHTML = body;
-    ovBtn.textContent = btn;
-    overlay.classList.remove("hidden");
-  }
-  function hideOverlay() { overlay.classList.add("hidden"); }
-
   function addParticles(x, y, hue, n) {
     for (let i = 0; i < n; i++) {
       const a = rand(0, Math.PI * 2), s = rand(40, 220);
-      particles.push({
-        x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
-        r: rand(1.5, 4), hue, life: 1, decay: rand(1.2, 2.4),
-      });
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        r: rand(1.5, 4), hue, life: 1, decay: rand(1.2, 2.4) });
     }
   }
-  function addFloater(x, y, text) {
-    floaters.push({ x, y, text, life: 1 });
+  function addFloater(x, y, text, color) { floaters.push({ x, y, text, color: color || "#fff", life: 1 }); }
+
+  // ----- Shop -----------------------------------------------------------------
+  function renderShop() {
+    shopCoinsEl.textContent = coins;
+    shopGrid.innerHTML = "";
+    for (const p of POWERUPS) {
+      const owned = boosts[p.id];
+      const affordable = coins >= p.cost && owned < p.max;
+      const card = document.createElement("div");
+      card.className = "card" + (affordable ? "" : " disabled");
+      card.innerHTML =
+        '<div class="ic">' + p.icon + '</div>' +
+        '<div class="nm">' + p.name + '</div>' +
+        '<div class="ds">' + p.desc + '</div>' +
+        '<div class="cost">🪙 ' + p.cost + '</div>' +
+        '<div class="owned">' + (owned > 0 ? "Equipped ×" + owned : (owned >= p.max ? "" : "")) + '</div>';
+      if (affordable) {
+        card.addEventListener("click", () => {
+          if (coins < p.cost || boosts[p.id] >= p.max) return;
+          coins -= p.cost;
+          boosts[p.id] += 1;
+          sfx.buy();
+          updateHud();
+          renderShop();
+        });
+      }
+      shopGrid.appendChild(card);
+    }
   }
+
+  function showOverlay(opts) {
+    ovTitle.textContent = opts.title;
+    ovBody.innerHTML = opts.body;
+    ovBtn.textContent = opts.btn;
+    ovPill.style.display = opts.showPill ? "" : "none";
+    if (opts.showShop) { renderShop(); shopEl.classList.remove("hidden"); }
+    else shopEl.classList.add("hidden");
+    overlay.classList.remove("hidden");
+  }
+  function hideOverlay() { overlay.classList.add("hidden"); }
 
   // ----- Interaction ----------------------------------------------------------
   function pointerPos(e) {
@@ -348,21 +465,22 @@
     const p = e.touches ? e.touches[0] : e;
     return { x: (p.clientX - rect.left) * scaleX, y: (p.clientY - rect.top) * scaleY };
   }
-
   function onPointer(e) {
     e.preventDefault();
     ensureAudio();
-    if (state === STATE.AIM) {
+    if ((state === STATE.AIM || state === STATE.REACT) && popsRemaining > 0) {
       const { x, y } = pointerPos(e);
-      const b = Ball(Math.max(BASE_R, Math.min(W - BASE_R, x)), Math.max(BASE_R, Math.min(H - BASE_R, y)), true);
+      const b = Ball(Math.max(BASE_R, Math.min(W - BASE_R, x)),
+                     Math.max(BASE_R, Math.min(H - BASE_R, y)), true);
       balls.push(b);
+      popsRemaining -= 1;
       poppedCount += 1;
-      chain = 1;
+      chain = Math.max(chain, 1);
       state = STATE.REACT;
+      score += 10;
       sfx.pop(1);
       addParticles(b.x, b.y, b.hue, 14);
       addFloater(b.x, b.y - 14, "+1");
-      score += 10;
       updateHud();
     }
   }
@@ -371,32 +489,37 @@
 
   function advanceOrEnd() {
     const reached = poppedCount >= target;
+    best = Math.max(best, score);
+    localStorage.setItem("popBest", best);
     if (reached) {
-      const bonus = Math.max(0, poppedCount - target) * 25;
+      const overflow = Math.max(0, poppedCount - target);
+      const bonus = overflow * 25;
       const levelBonus = level * 50;
+      const earned = poppedCount + overflow;     // coins for the shop
       score += bonus + levelBonus;
+      coins += earned;
       best = Math.max(best, score);
       localStorage.setItem("popBest", best);
       state = STATE.WIN;
       sfx.win();
       updateHud();
-      showOverlay(
-        "Level " + level + " cleared! 🎉",
-        "Popped <b>" + poppedCount + "</b> of " + target + ".<br>" +
-        "Chain bonus <b>+" + bonus + "</b> &nbsp;·&nbsp; Level bonus <b>+" + levelBonus + "</b>",
-        "Next Level →"
-      );
+      showOverlay({
+        title: "Level " + level + " cleared! 🎉",
+        body: "Popped <b>" + poppedCount + "</b> of " + target +
+              " &nbsp;·&nbsp; Chain bonus <b>+" + bonus + "</b> &nbsp;·&nbsp; Level bonus <b>+" + levelBonus + "</b><br>" +
+              "You earned <b style='color:var(--gold)'>🪙 " + earned + "</b> coins!",
+        btn: "Next Level →", showShop: true, showPill: false,
+      });
     } else {
-      best = Math.max(best, score);
-      localStorage.setItem("popBest", best);
       state = STATE.LOSE;
       sfx.lose();
       updateHud();
-      showOverlay(
-        "So close! 💥",
-        "You popped <b>" + poppedCount + "</b> of " + target + ".<br>Final score: <span class='big'>" + score + "</span>",
-        "Try Again"
-      );
+      showOverlay({
+        title: "So close! 💥",
+        body: "You popped <b>" + poppedCount + "</b> of " + target +
+              ".<br>Final score: <span class='big'>" + score + "</span>",
+        btn: "Try Again", showShop: false, showPill: false,
+      });
     }
   }
 
@@ -405,8 +528,8 @@
     sfx.click();
     hideOverlay();
     if (state === STATE.MENU || state === STATE.LOSE) {
-      level = 1;
-      score = 0;
+      level = 1; score = 0; coins = 0;
+      boosts = { extraPops: 0, megaBlast: 0, slowMo: 0, sticky: 0, magnet: 0 };
       spawnLevel(level);
     } else if (state === STATE.WIN) {
       level += 1;
@@ -414,18 +537,31 @@
     }
   });
 
-  // ----- Update / render loop -------------------------------------------------
+  // ----- Update / render ------------------------------------------------------
   function update(dt) {
     pulse += dt;
-    // Balls
     let anyActive = false;
+
     for (const b of balls) {
       b.hue = (b.hue + b.hueSpin * dt + 360) % 360;
-      b.phase += dt * 3;
-
       if (b.life === "floating") {
-        b.x += b.vx * dt;
-        b.y += b.vy * dt;
+        // Magnet: drift toward the nearest active pop.
+        if (curMagnet) {
+          let near = null, nd = 200 * 200;
+          for (const a of balls) {
+            if (a.life === "growing" || a.life === "holding" || a.life === "shrinking") {
+              const dx = a.x - b.x, dy = a.y - b.y, d = dx * dx + dy * dy;
+              if (d < nd) { nd = d; near = a; }
+            }
+          }
+          if (near) {
+            const dx = near.x - b.x, dy = near.y - b.y, len = Math.hypot(dx, dy) || 1;
+            b.vx += (dx / len) * 140 * dt;
+            b.vy += (dy / len) * 140 * dt;
+          }
+        }
+        b.x += b.vx * dt * curSpeedMul;
+        b.y += b.vy * dt * curSpeedMul;
         if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
         if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); }
         if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); }
@@ -433,7 +569,7 @@
       } else if (b.life === "growing") {
         anyActive = true;
         b.r += GROW * dt;
-        if (b.r >= MAX_R) { b.r = MAX_R; b.life = "holding"; b.hold = HOLD_TIME; }
+        if (b.r >= b.maxR) { b.r = b.maxR; b.life = "holding"; b.hold = HOLD_TIME * curHoldMul; }
       } else if (b.life === "holding") {
         anyActive = true;
         b.hold -= dt;
@@ -445,7 +581,6 @@
       }
     }
 
-    // Chain reactions: floating balls touching an active pop start popping
     if (state === STATE.REACT) {
       for (const b of balls) {
         if (b.life !== "floating") continue;
@@ -470,7 +605,6 @@
       if (!anyActive) advanceOrEnd();
     }
 
-    // Particles
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       p.x += p.vx * dt; p.y += p.vy * dt;
@@ -478,11 +612,9 @@
       p.life -= p.decay * dt;
       if (p.life <= 0) particles.splice(i, 1);
     }
-    // Floaters
     for (let i = floaters.length - 1; i >= 0; i--) {
       const f = floaters[i];
-      f.y -= 30 * dt;
-      f.life -= dt;
+      f.y -= 30 * dt; f.life -= dt;
       if (f.life <= 0) floaters.splice(i, 1);
     }
   }
@@ -491,27 +623,20 @@
     if (b.r <= 0) return;
     const active = b.life !== "floating";
     let alpha = 1;
-    if (b.life === "shrinking") alpha = Math.max(0.15, b.r / MAX_R);
+    if (b.life === "shrinking") alpha = Math.max(0.15, b.r / b.maxR);
     const col = "hsla(" + b.hue + ", 85%, 62%, ";
-    const colDim = "hsla(" + b.hue + ", 85%, 62%, 0)";
-
-    // glow
     const grad = ctx.createRadialGradient(b.x, b.y, b.r * 0.2, b.x, b.y, b.r * (active ? 1.6 : 1.4));
     grad.addColorStop(0, col + (0.95 * alpha) + ")");
     grad.addColorStop(0.7, col + (0.55 * alpha) + ")");
-    grad.addColorStop(1, colDim);
+    grad.addColorStop(1, "hsla(" + b.hue + ", 85%, 62%, 0)");
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r * (active ? 1.5 : 1.3), 0, Math.PI * 2);
     ctx.fill();
-
-    // core
     ctx.fillStyle = "hsla(" + b.hue + ", 90%, 72%, " + alpha + ")";
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r * 0.62, 0, Math.PI * 2);
     ctx.fill();
-
-    // ring on active pops
     if (active) {
       ctx.strokeStyle = "hsla(" + b.hue + ", 95%, 80%, " + (alpha * 0.8) + ")";
       ctx.lineWidth = 2;
@@ -523,11 +648,8 @@
 
   function render() {
     ctx.clearRect(0, 0, W, H);
-
-    // subtle moving vignette dots already from CSS bg; draw balls
     for (const b of balls) if (b.life !== "dead") drawBall(b);
 
-    // particles
     for (const p of particles) {
       ctx.globalAlpha = Math.max(0, p.life);
       ctx.fillStyle = "hsl(" + p.hue + ", 90%, 70%)";
@@ -537,23 +659,30 @@
     }
     ctx.globalAlpha = 1;
 
-    // floaters
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = "bold 18px system-ui, sans-serif";
     for (const f of floaters) {
       ctx.globalAlpha = Math.max(0, f.life);
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = f.color;
       ctx.fillText(f.text, f.x, f.y);
     }
     ctx.globalAlpha = 1;
 
-    // aim hint
-    if (state === STATE.AIM) {
-      const a = 0.25 + 0.2 * Math.sin(pulse * 3);
-      ctx.fillStyle = "rgba(255,255,255," + a + ")";
-      ctx.font = "600 17px system-ui, sans-serif";
-      ctx.fillText("Click anywhere to start the chain — pop at least " + target + " of " + balls.length + "!", W / 2, 28);
+    if (state === STATE.AIM || state === STATE.REACT) {
+      if (state === STATE.AIM && popsRemaining >= 1 && poppedCount === 0) {
+        const a = 0.3 + 0.2 * Math.sin(pulse * 3);
+        ctx.fillStyle = "rgba(255,255,255," + a + ")";
+        ctx.font = "600 17px system-ui, sans-serif";
+        ctx.fillText("Click anywhere to start the chain — pop at least " + target + " of " + balls.length + "!", W / 2, 26);
+      }
+      if (popsRemaining > 0) {
+        ctx.textAlign = "left";
+        ctx.fillStyle = "rgba(255,215,94,0.95)";
+        ctx.font = "700 16px system-ui, sans-serif";
+        ctx.fillText("⚡ Pops left: " + popsRemaining, 14, 22);
+        ctx.textAlign = "center";
+      }
     }
   }
 
@@ -567,13 +696,13 @@
   }
 
   // ----- Boot -----------------------------------------------------------------
-  resize();
+  layout();
   updateHud();
-  showOverlay(
-    "Pop'em All!",
-    "One click sets off a <b>chain reaction</b>. Each popped ball expands and pops any ball it touches. Reach the <b>target</b> to advance through endless levels.",
-    "Play"
-  );
+  showOverlay({
+    title: "Pop'em All!",
+    body: "One click sets off a <b>chain reaction</b>. Each popped ball expands and pops any ball it touches. Reach the <b>target</b> to clear the level, earn <b style='color:var(--gold)'>coins</b>, and buy <b>powerups</b> between levels.",
+    btn: "Play", showShop: false, showPill: true,
+  });
   requestAnimationFrame(loop);
 })();
 </script>
