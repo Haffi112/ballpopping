@@ -29,10 +29,13 @@ As you climb, the field mixes in special balls (telegraphed by colour/markers):
 
 ## Scaling difficulty
 
-Levels 1–5 stay open and gentle. From level 6 the challenge ramps: balls speed
-up, the chain window shrinks, and **walls** appear (and later move) — they block
-chains, so a single big pop no longer clears everything. Powerups counter all of
-this, but each extra copy costs more, so you choose rather than buy everything.
+From level 3, **walls** appear — drawn from a library of partially-randomized
+layouts (splits, crosses, pillars, serpentine lanes, diagonals, open boxes,
+pinwheels) that grows more varied and elaborate as you climb, with some bars
+oscillating. Walls block chains **and explosions** — a pop can't reach (or even
+render) past a wall, so a single big blast no longer clears everything. From
+level 6 balls also speed up and the chain window shrinks. Powerups counter all
+of this, but each extra copy costs more, so you choose rather than buy everything.
 
 ## Features
 

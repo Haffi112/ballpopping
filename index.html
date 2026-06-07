@@ -406,25 +406,120 @@
 
   function rand(a, b) { return a + Math.random() * (b - a); }
 
-  // Obstacle layouts grow with level. Bars never seal a region: the central
-  // cross has corner gaps, so balls always circulate. Some bars oscillate.
+  // Bars are partially randomized each spawn and drawn from a library of layout
+  // patterns that unlocks more variety with level. Every pattern is built with
+  // gaps so balls keep circulating (no sealed regions).
   function bar(x, y, w, h, move) { return { x, y, w, h, base: { x, y }, move: move || null }; }
-  function generateWalls(lv) {
-    if (lv < 6) return [];                     // levels 1-5 stay open
-    const T = WALL_T;
-    const tpl = [
-      bar(W / 2 - T / 2, 140, T, 320),         // vertical center (gaps top/bottom)
-      bar(180, H / 2 - T / 2, W - 360, T),     // horizontal center (gaps left/right)
-      bar(200 - T / 2, 0, T, 210),             // upper-left stub
-      bar(600 - T / 2, H - 210, T, 210),       // lower-right stub
-      bar(380, 160 - T / 2, W - 380, T),       // right shelf
-      bar(0, 440 - T / 2, 420, T),             // left shelf
-    ];
-    const count = Math.min(tpl.length, Math.floor((lv - 6) / 3) + 1);
-    const out = tpl.slice(0, count);
-    if (lv >= 12 && out[0]) out[0].move = { axis: "x", amp: 130, speed: 0.7, phase: 0 };
-    if (lv >= 18 && out[1]) out[1].move = { axis: "y", amp: 90, speed: 0.9, phase: 1.5 };
+  const T = WALL_T;
+
+  function pVsplit(lv) {                 // vertical wall(s) with a horizontal gap
+    const out = [], n = lv >= 9 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const x = n === 1 ? rand(W * 0.35, W * 0.65)
+                        : (i === 0 ? rand(W * 0.22, W * 0.4) : rand(W * 0.6, W * 0.78));
+      const gapY = rand(140, H - 260), gapH = rand(110, 150);
+      out.push(bar(x - T / 2, 40, T, gapY - 40));
+      out.push(bar(x - T / 2, gapY + gapH, T, H - 40 - (gapY + gapH)));
+    }
     return out;
+  }
+  function pHsplit(lv) {                 // horizontal wall(s) with a vertical gap
+    const out = [], n = lv >= 9 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const y = n === 1 ? rand(H * 0.35, H * 0.65)
+                        : (i === 0 ? rand(H * 0.22, H * 0.4) : rand(H * 0.6, H * 0.78));
+      const gapX = rand(160, W - 290), gapW = rand(110, 150);
+      out.push(bar(40, y - T / 2, gapX - 40, T));
+      out.push(bar(gapX + gapW, y - T / 2, W - 40 - (gapX + gapW), T));
+    }
+    return out;
+  }
+  function pCross(lv) {                  // plus with gaps at all four ends
+    const cx = rand(W * 0.42, W * 0.58), cy = rand(H * 0.42, H * 0.58);
+    const vGap = rand(110, 145), hGap = rand(120, 160);
+    return [bar(cx - T / 2, vGap, T, H - 2 * vGap), bar(hGap, cy - T / 2, W - 2 * hGap, T)];
+  }
+  function pPillars(lv) {                // scattered short columns
+    const out = [], n = Math.min(7, 3 + Math.floor((lv - 3) / 2));
+    for (let i = 0; i < n; i++) {
+      const vertical = Math.random() < 0.6;
+      const x = rand(W * 0.12, W * 0.88), y = rand(H * 0.1, H * 0.7);
+      if (vertical) out.push(bar(x - T / 2, y, T, rand(70, 150)));
+      else out.push(bar(x, y - T / 2, rand(70, 150), T));
+    }
+    return out;
+  }
+  function pLanes(lv) {                  // serpentine bars alternating sides
+    const out = [], rows = Math.min(5, 2 + Math.floor((lv - 3) / 2));
+    for (let i = 0; i < rows; i++) {
+      const y = 90 + (i + 0.5) * (H - 150) / rows;
+      const len = rand(W * 0.5, W * 0.68), x = (i % 2 === 0) ? 0 : W - len;
+      out.push(bar(x, y - T / 2, len, T));
+    }
+    return out;
+  }
+  function pDiagonal(lv) {               // stepped diagonal barrier
+    const out = [], steps = Math.min(6, 3 + Math.floor((lv - 3) / 2));
+    const flip = Math.random() < 0.5;
+    for (let i = 0; i < steps; i++) {
+      const fx = 90 + i * (W - 220) / steps + rand(-15, 15);
+      const x = flip ? W - fx : fx;
+      const y = 90 + i * (H - 200) / steps + rand(-15, 15);
+      out.push(bar(x - T / 2, y, T, rand(60, 110)));
+    }
+    return out;
+  }
+  function pBox(lv) {                    // open box (ring with a gap on one side)
+    const bw = rand(260, 360), bh = rand(180, 250);
+    const x = (W - bw) / 2 + rand(-50, 50), y = (H - bh) / 2 + rand(-30, 30);
+    const gap = rand(90, 120), side = Math.floor(rand(0, 4));
+    const out = [];
+    // four sides, with `gap` cut out of one of them
+    function edge(ex, ey, ew, eh, cut) {
+      if (!cut) { out.push(bar(ex, ey, ew, eh)); return; }
+      if (ew > eh) { const g = ex + (ew - gap) / 2; out.push(bar(ex, ey, g - ex, eh)); out.push(bar(g + gap, ey, ex + ew - (g + gap), eh)); }
+      else { const g = ey + (eh - gap) / 2; out.push(bar(ex, ey, ew, g - ey)); out.push(bar(ex, g + gap, ew, ey + eh - (g + gap))); }
+    }
+    edge(x, y, bw, T, side === 0);                 // top
+    edge(x, y + bh - T, bw, T, side === 1);         // bottom
+    edge(x, y, T, bh, side === 2);                 // left
+    edge(x + bw - T, y, T, bh, side === 3);         // right
+    return out;
+  }
+  function pPinwheel(lv) {               // four arms around a hollow centre
+    const cx = W / 2 + rand(-30, 30), cy = H / 2 + rand(-30, 30), arm = rand(120, 175), c = 22;
+    return [
+      bar(cx - T / 2, cy - c - arm, T, arm), bar(cx - T / 2, cy + c, T, arm),
+      bar(cx - c - arm, cy - T / 2, arm, T), bar(cx + c, cy - T / 2, arm, T),
+    ];
+  }
+  function maybeMove(out, lv) {
+    if (lv < 8 || !out.length) return;
+    const moves = Math.min(2, 1 + Math.floor((lv - 8) / 5));
+    for (let m = 0; m < moves; m++) {
+      const wll = out[Math.floor(Math.random() * out.length)];
+      if (!wll || wll.move) continue;
+      wll.move = (wll.h > wll.w)
+        ? { axis: "x", amp: rand(60, 120), speed: rand(0.5, 0.9), phase: rand(0, 6) }
+        : { axis: "y", amp: rand(40, 90), speed: rand(0.5, 0.9), phase: rand(0, 6) };
+    }
+  }
+  const WALL_PATTERNS = [pVsplit, pHsplit, pCross, pPillars, pLanes, pDiagonal, pBox, pPinwheel];
+  function generateWalls(lv) {
+    if (lv < 3) return [];               // walls now start at level 3
+    const poolN = Math.min(WALL_PATTERNS.length, 3 + Math.floor((lv - 3) / 2));
+    let out = WALL_PATTERNS[Math.floor(Math.random() * poolN)](lv);
+    if (lv >= 11) out = out.concat(pPillars(lv).slice(0, 1 + Math.floor(Math.random() * 2)));
+    // clamp to arena and refresh motion anchors
+    for (const b of out) {
+      if (b.x < 0) { b.w += b.x; b.x = 0; }
+      if (b.y < 0) { b.h += b.y; b.y = 0; }
+      if (b.x + b.w > W) b.w = W - b.x;
+      if (b.y + b.h > H) b.h = H - b.y;
+      b.base = { x: b.x, y: b.y };
+    }
+    maybeMove(out, lv);
+    return out.filter(b => b.w > 3 && b.h > 3);
   }
 
   function pointInWall(x, y, pad) {
@@ -832,9 +927,39 @@
     }
   }
 
+  // Shadow-volume of a wall as seen from point (px,py): the umbra quad behind
+  // the bar. Used to clip a pop's blast so it can't render through a wall.
+  function wallShadowPoly(px, py, w) {
+    const c = [[w.x, w.y], [w.x + w.w, w.y], [w.x + w.w, w.y + w.h], [w.x, w.y + w.h]];
+    const facing = [];
+    for (let i = 0; i < 4; i++) {
+      const a = c[i], b = c[(i + 1) % 4];
+      facing.push((b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0]) > 0);
+    }
+    const sil = [];
+    for (let i = 0; i < 4; i++) if (facing[(i + 3) % 4] !== facing[i]) sil.push(c[i]);
+    if (sil.length !== 2) return null;   // light inside / degenerate
+    const FAR = 2400;
+    function proj(v) { const dx = v[0] - px, dy = v[1] - py, l = Math.hypot(dx, dy) || 1; return [v[0] + dx / l * FAR, v[1] + dy / l * FAR]; }
+    const q0 = proj(sil[0]), q1 = proj(sil[1]);
+    return [sil[0][0], sil[0][1], sil[1][0], sil[1][1], q1[0], q1[1], q0[0], q0[1]];
+  }
+  function clipOutWallShadow(px, py, w) {
+    const poly = wallShadowPoly(px, py, w);
+    if (!poly) return;
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);                 // keep everything in-bounds...
+    ctx.moveTo(poly[0], poly[1]);         // ...except this shadow (even-odd hole)
+    for (let i = 2; i < poly.length; i += 2) ctx.lineTo(poly[i], poly[i + 1]);
+    ctx.closePath();
+    ctx.clip("evenodd");
+  }
+
   function drawBall(b) {
     if (b.r <= 0) return;
     const active = b.life !== "floating";
+    const doClip = active && walls.length > 0;
+    if (doClip) { ctx.save(); for (const w of walls) clipOutWallShadow(b.x, b.y, w); }
     let alpha = 1;
     if (b.life === "shrinking") alpha = Math.max(0.15, b.r / b.maxR);
     const sat = b.sat, lig = b.lig;
@@ -858,6 +983,7 @@
       ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
       ctx.stroke();
     }
+    if (doClip) ctx.restore();
     if (!active && b.type !== "normal") drawTypeMarker(b);
   }
   // Telegraph each special type while it floats so players can plan.
